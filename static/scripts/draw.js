@@ -1,3 +1,10 @@
+function getBoxColor(personID) {
+    // Define a simple color palette
+    const colors = ['red', 'green', 'blue', 'yellow', 'purple', 'orange', 'cyan', 'magenta'];
+    // Return a color based on the personID modulo the number of available colors
+    return colors[personID % colors.length];
+}
+
 function drawPoint(x, y) {
     // 设置点的大小
     const pointSize = 5; // 可以根据需要调整
@@ -6,7 +13,7 @@ function drawPoint(x, y) {
     ctx.fillStyle = '#ff2626'; // 点的颜色
     ctx.beginPath(); // 开始路径绘制
     ctx.arc(x, y, pointSize, 0, Math.PI * 2, true); // 绘制圆形来表示点
-    // ctx.fill(); // 完成绘制
+    ctx.fill(); // 完成绘制
 }
 
 function drawLine(x1, y1, x2, y2) {

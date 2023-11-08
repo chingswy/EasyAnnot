@@ -1,5 +1,6 @@
 import os
-from flask import Flask, render_template, request, jsonify, send_from_directory
+import json
+from flask import Flask, render_template, request, jsonify, send_from_directory, abort
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
@@ -18,7 +19,7 @@ def index3d():
 # Index route to display the first image of each folder
 
 # Function to get the first image from each folder
-ROOT = '/mnt/v01/clips/aikesi'
+ROOT = '/mnt/v01/clips/HuMiD-yukagawa-clips'
 
 def get_first_images(root_path):
     first_images = []
@@ -55,6 +56,25 @@ def show_folder(folder_name):
 def send_image(folder_name, filename):
     print(folder_name, filename)
     return send_from_directory(os.path.join(ROOT, 'images', folder_name), filename)
+
+@app.route('/annotations/<folder_name>/<image_name>')
+def get_annotations(folder_name, image_name):
+    # Construct the file path to the JSON file.
+    json_file_path = os.path.join(ROOT, 'annots', folder_name, f'{image_name.replace(".jpg", "")}.json')
+    # Check if the file exists.
+    if os.path.exists(json_file_path) and os.path.isfile(json_file_path):
+        # Open the JSON file and return its contents.
+        try:
+            with open(json_file_path, 'r') as f:
+                data = json.load(f)
+            return jsonify(data)
+        except Exception as e:
+            # If there's an error reading the file, return a server error.
+            print(f"Error reading file: {e}")
+            abort(500)
+    else:
+        # If the file does not exist, return a 404 not found error.
+        abort(404)
 
 # @app.route('/images/<path:folder>')
 # def get_image_list(folder):
