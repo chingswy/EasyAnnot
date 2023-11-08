@@ -76,28 +76,25 @@ def get_annotations(folder_name, image_name):
         # If the file does not exist, return a 404 not found error.
         abort(404)
 
-# @app.route('/images/<path:folder>')
-# def get_image_list(folder):
-#     # 获取指定文件夹内的所有图片文件名
-#     print('try to get', folder)
-#     subs = sorted(os.listdir(os.path.join(IMAGE_FOLDER, folder, 'images')))
-#     image_files = []
-#     for sub in subs:
-#         imgnames = sorted(os.listdir(os.path.join(
-#             IMAGE_FOLDER, folder, 'images', sub)))
-#         for imgname in imgnames:
-#             image_files.append(os.path.join(
-#                 IMAGE_FOLDER, folder, 'images', sub, imgname))
-#         break
-#     print('get', len(image_files), 'images')
-#     return jsonify(image_files)
-
-
-# @app.route('/images/<path:folder>/<filename>')
-# def get_image(folder, filename):
-#     # 发送请求的图片文件
-#     return send_from_directory(os.path.join(IMAGE_FOLDER, folder), filename)
-
+@app.route('/keypoints3d/<folder_name>/<image_name>')
+def get_keypoints3d(folder_name, image_name):
+    # Construct the file path to the JSON file.
+    json_file_path = os.path.join(ROOT, 'output', 'keypoints3d', folder_name, f'{image_name.replace(".jpg", "")}.json')
+    print(json_file_path)
+    # Check if the file exists.
+    if os.path.exists(json_file_path) and os.path.isfile(json_file_path):
+        # Open the JSON file and return its contents.
+        try:
+            with open(json_file_path, 'r') as f:
+                data = json.load(f)
+            return jsonify(data)
+        except Exception as e:
+            # If there's an error reading the file, return a server error.
+            print(f"Error reading file: {e}")
+            abort(500)
+    else:
+        # If the file does not exist, return a 404 not found error.
+        abort(404)
 
 @app.route('/save_annotation', methods=['POST'])
 def save_annotation():
