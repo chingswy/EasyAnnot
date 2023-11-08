@@ -10,7 +10,6 @@ function setCanvasSize(image) {
 window.addEventListener('resize', setCanvasSize); // 调整窗口大小时更新画布大小
 
 let currentIndex = 0;
-let images = [];
 
 function loadImage() {
     const image = new Image();
@@ -19,27 +18,28 @@ function loadImage() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
     }
-    image.src = images[currentIndex]; // 替换为你的图片路径
+    // image.src = images[currentIndex]; // 替换为你的图片路径
     pageIndexInput.value = currentIndex + 1;
     imageSlider.value = currentIndex + 1;
-    // image.src = `/images/${folder}/${images[currentIndex]}`;
+    image.src = `/images/${folder_name}/${images[currentIndex]}`;
     return image;
 }
-
-let folder = '511-balance';
 
 const pageIndexInput = document.getElementById('pageIndex');
 const imageSlider = document.getElementById('imageSlider');
 
 // 获取图片列表
-fetch(`/images/${folder}`)
-    .then(response => response.json())
-    .then(data => {
-        images = data;
-        loadImage();
-        pageIndexInput.value = currentIndex + 1;
-        imageSlider.max = images.length;
-    });
+loadImage();
+pageIndexInput.value = currentIndex + 1;
+imageSlider.max = images.length;
+// fetch(`/images/${folder}`)
+//     .then(response => response.json())
+//     .then(data => {
+//         images = data;
+//         loadImage();
+//         pageIndexInput.value = currentIndex + 1;
+//         imageSlider.max = images.length;
+//     });
 
 document.getElementById('prev').addEventListener('click', () => {
     if (currentIndex > 0) {

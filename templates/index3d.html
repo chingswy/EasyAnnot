@@ -1,0 +1,99 @@
+{% extends 'element/blank.html' %}
+
+{% block content_block %}
+
+<script src="https://threejs.org/build/three.js"></script>
+<script>
+// 创建场景
+var scene = new THREE.Scene();
+
+// 创建摄像机
+var camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.z = 5;
+
+// 创建渲染器
+var renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// 创建骨架点 - 假设你已经有了一个包含点的数组 skeletonPoints
+var skeletonPoints = [
+  [0.0, 0.0, 0.9],
+  [0.0, 0.0, 0.8],
+  [0.0, 0.0, 0.5],
+  [0.0, 0.0, 0.2],
+  [0.1, 0.0, 0.7],
+  [0.3, 0.0, 0.5],
+  [0.4, 0.0, 0.3],
+  [-0.1, 0.0, 0.7],
+  [-0.3, 0.0, 0.5],
+  [-0.4, 0.0, 0.3],
+  [0.1, 0.0, 0.1],
+  [0.1, 0.0, -0.3],
+  [0.1, 0.0, -0.6],
+  [-0.1, 0.0, 0.1],
+  [-0.1, 0.0, -0.3],
+  [-0.1, 0.0, -0.6]
+];
+
+var skeletonEdges = [
+    [0, 1],
+    [1, 2]
+]
+
+skeletonPoints.forEach(point => {
+    var geometry = new THREE.SphereGeometry(0.1, 32, 32);
+    var material = new THREE.MeshBasicMaterial({color: 0x7777ff});
+    var sphere = new THREE.Mesh(geometry, material);
+    sphere.position.set(point.x, point.y, point.z);
+    scene.add(sphere);
+});
+
+// 创建线段连接骨架点 - 假设你有一个数组 skeletonEdges 定义了连接点的索引
+skeletonEdges.forEach(edge => {
+    var material = new THREE.LineBasicMaterial({color: 0x0000ff});
+    var points = [];
+    points.push(new THREE.Vector3(skeletonPoints[edge[0]].x, skeletonPoints[edge[0]].y, skeletonPoints[edge[0]].z));
+    points.push(new THREE.Vector3(skeletonPoints[edge[1]].x, skeletonPoints[edge[1]].y, skeletonPoints[edge[1]].z));
+    
+    var geometry = new THREE.BufferGeometry().setFromPoints(points);
+    
+    var line = new THREE.Line(geometry, material);
+    scene.add(line);
+});
+
+
+// 创建棋盘格地面
+var size = 10;
+var divisions = 10;
+
+var gridHelper = new THREE.GridHelper(size, divisions);
+scene.add(gridHelper);
+
+// 动画循环渲染场景
+// 初始化 OrbitControls
+camera.position.set(0, 1, 3); // x, y, z，假设骨架在原点附近
+var controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+// 控制设置，例如阻尼、旋转速度等
+controls.enableDamping = true; // 启用惯性
+controls.dampingFactor = 0.25; // 阻尼系数
+controls.enableZoom = true; // 允许缩放
+
+// 动画循环渲染场景
+function animate() {
+    requestAnimationFrame(animate);
+
+    // 更新控制器
+    controls.update();
+
+    renderer.render(scene, camera);
+}
+animate();
+
+
+</script>
+
+
+
+{% endblock %}

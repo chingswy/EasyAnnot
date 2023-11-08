@@ -1,0 +1,30 @@
+{% extends 'element/blank.html' %}
+
+{% block content_block %}
+
+<div class="container mt-4">
+    <h1 class="mb-4">{{ folder_name }}</h1>
+    <div class="d-flex justify-content-center">
+        <canvas id="imageCanvas" class="mb-3"></canvas>
+    </div>
+    <div class="text-center mb-3">
+        <button id="prev" class="btn btn-primary me-2">上一张</button>
+        <!-- 页码输入框和跳转按钮 -->
+        <input type="number" id="pageIndex" class="text-center" style="width: 120px;">
+        <button id="goPage" class="btn btn-secondary me-2">跳转</button>
+        <button id="next" class="btn btn-primary">下一张</button>
+    </div>
+    <div class="slider text-center mb-3">
+        <input type="range" class="form-range" id="imageSlider" min="1" value="1">
+    </div>
+</div>
+
+<script>
+    var folder_name = "{{ folder_name }}";
+    var images = {{ images | tojson | safe }};
+    console.log(images);
+</script>
+
+<script src="{{ url_for('static', filename='scripts/browser.js') }}"></script>
+
+{% endblock %}
