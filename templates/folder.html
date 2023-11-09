@@ -53,8 +53,8 @@
     let mixer;
     let center = [0, 0, 6];
 
-    function loadKeypoints3d() {
-        const url = `/keypoints3d/${folder_name}/${images[currentIndex]}`; // The URL to your annotations file
+    function loadKeypoints3d(index) {
+        const url = `/keypoints3d/${folder_name}/${images[index]}`; // The URL to your annotations file
         // Set the image src to load it
         // Asynchronously load the annotations JSON
         fetch(url)
@@ -89,7 +89,7 @@
         });
         return 0;
     }
-    loadKeypoints3d();
+    loadKeypoints3d(0);
 
     init();
     animate();
@@ -177,22 +177,18 @@
     }
 
     function animate() {
-
         requestAnimationFrame( animate );
-
-        // const delta = clock.getDelta();
-
-        // if ( mixer ) mixer.update( delta );
         renderer.render( scene, camera );
     }
 
-    imageSlider.addEventListener('input', () => {
-        console.log("listen in 3d")
-        currentIndex = imageSlider.value - 1;
-        loadImage();
-        loadKeypoints3d();
-    });
-    
+    function _update_index(){
+        loadImage(currentIndex);
+        loadKeypoints3d(currentIndex);
+        console.log('update in 3d');
+    }
+    window._update_index = _update_index;
 </script>
+
+<script src="{{ url_for('static', filename='scripts/keyboard.js') }}"></script>
 
 {% endblock %}

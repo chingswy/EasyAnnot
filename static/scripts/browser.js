@@ -11,15 +11,15 @@ window.addEventListener('resize', setCanvasSize); // 调整窗口大小时更新
 
 let currentIndex = 0;
 
-function loadImage() {
-    const annotationsUrl = `/annotations/${folder_name}/${images[currentIndex]}`; // The URL to your annotations file
+function loadImage(index) {
+    const annotationsUrl = `/annotations/${folder_name}/${images[index]}`; // The URL to your annotations file
     // Set the image src to load it
     // Asynchronously load the annotations JSON
     fetch(annotationsUrl)
         .then(response => response.json())
         .then(data => {
             const image = new Image();
-            image.src = `/images/${folder_name}/${images[currentIndex]}`;
+            image.src = `/images/${folder_name}/${images[index]}`;
             // Once the image has loaded, draw it and then the annotations
             image.onload = function() {
                 setCanvasSize(image); // Set canvas size
@@ -51,17 +51,10 @@ function loadImage() {
                     }
                 });
             }
-
-            // Update UI elements if necessary
-            pageIndexInput.value = currentIndex + 1;
-            imageSlider.value = currentIndex + 1;
         })
         .catch(error => {
             console.error('Error fetching annotation data:', error);
         });
-    // image.src = images[currentIndex]; // 替换为你的图片路径
-    pageIndexInput.value = currentIndex + 1;
-    imageSlider.value = currentIndex + 1;
     return 0;
 }
 
@@ -69,48 +62,13 @@ const pageIndexInput = document.getElementById('pageIndex');
 const imageSlider = document.getElementById('imageSlider');
 
 // 获取图片列表
-loadImage();
 pageIndexInput.value = currentIndex + 1;
 imageSlider.max = images.length;
+_update_index();
 
-document.getElementById('prev').addEventListener('click', () => {
-    if (currentIndex > 0) {
-        currentIndex--;
-        loadImage();
-    }
-});
+function _update_index(){
+    console.log('update in 2d');
+    loadImage(currentIndex);
+}
 
-document.getElementById('next').addEventListener('click', () => {
-    if (currentIndex < images.length - 1) {
-        currentIndex++;
-        loadImage();
-    }
-});
-
-document.getElementById('goPage').addEventListener('click', () => {
-    let index = parseInt(pageIndexInput.value, 10) - 1;
-    if (index >= 0 && index < images.length) {
-        currentIndex = index;
-        loadImage();
-    }
-});
-
-imageSlider.addEventListener('input', () => {
-    currentIndex = imageSlider.value - 1;
-    loadImage();
-});
-
-// 添加键盘事件监听
-window.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowLeft') { // 左箭头键
-        if (currentIndex > 0) {
-            currentIndex--;
-            loadImage();
-        }
-    } else if (e.key === 'ArrowRight') { // 右箭头键
-        if (currentIndex < images.length - 1) {
-            currentIndex++;
-            loadImage();
-        }
-    }
-});
+window._update_index = _update_index;
