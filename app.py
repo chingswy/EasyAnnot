@@ -11,7 +11,6 @@ IMAGE_FOLDER = os.path.join('static', 'data')
 def index():
     return render_template('index.html')
 
-
 @app.route('/index3d')
 def index3d():
     return render_template('index_bvh.html')
@@ -20,6 +19,9 @@ def index3d():
 
 # Function to get the first image from each folder
 ROOT = '/mnt/v01/clips/HuMiD-yukagawa-clips'
+ROOT = os.environ['ROOT']
+
+filenames = {}
 
 def get_first_images(root_path):
     first_images = []
@@ -39,8 +41,30 @@ def gallery():
     first_images = get_first_images(os.path.join(ROOT, 'images'))
     return render_template('index_gallery.html', first_images=first_images)
 
-# Route to display all images within a folder
+@app.route('/synchronize')
+def synchronize():
+    first_images = get_first_images(os.path.join(ROOT, 'images'))
+    return render_template('index_gallery.html', first_images=first_images)
 
+@app.route('/clip')
+def clip():
+    subs = sorted(os.listdir(os.path.join(ROOT, 'images')))
+    for sub in subs:
+        filenames[sub] = sorted(os.listdir(os.path.join(ROOT, 'images', sub)))
+    num_images = len(filenames[subs[0]])
+    print(f'Get {subs}, {num_images} images')
+    return render_template('clips.html', subs=subs, num_images=num_images)
+
+@app.route('/save_clips', methods=['POST'])
+def save_clips():
+    data = request.json
+    clips = data.get('clips')
+    print(clips)
+    # 这里添加处理clips的逻辑，比如保存到数据库或文件
+    # 例如：save_to_database(clips)
+    return jsonify({'status': 'success', 'message': 'Clips data received and processed'}), 200
+
+# Route to display all images within a folder
 @app.route('/folder/<folder_name>')
 def show_folder(folder_name):
     folder_path = os.path.join(ROOT, 'images', folder_name)
@@ -54,8 +78,21 @@ def show_folder(folder_name):
 
 @app.route('/images/<folder_name>/<filename>')
 def send_image(folder_name, filename):
-    print(folder_name, filename)
     return send_from_directory(os.path.join(ROOT, 'images', folder_name), filename)
+
+@app.route('/send_i_image/<string:folder_name>/<int:index>')
+def send_i_image(folder_name, index):
+    return send_from_directory(os.path.join(ROOT, 'images', folder_name), filenames[folder_name][index])
+
+@app.route('/send_first_image/<folder_name>')
+def send_first_image(folder_name):
+    filename = sorted(os.listdir(os.path.join(ROOT, 'images', folder_name)))[0]
+    return send_from_directory(os.path.join(ROOT, 'images', folder_name), filename)
+
+@app.route('/get_num_images/<folder_name>')
+def get_num_images(folder_name):
+    filenames = sorted(os.listdir(os.path.join(ROOT, 'images', folder_name)))
+    return len(filenames)
 
 @app.route('/annotations/<folder_name>/<image_name>')
 def get_annotations(folder_name, image_name):

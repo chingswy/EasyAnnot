@@ -3,101 +3,10 @@
 {% block content_block %}
 
 <div class="container mt-4">
-    <h1 class="mb-4">Image Annotation Tool</h1>
-    <div class="d-flex justify-content-center">
-        <canvas id="imageCanvas" class="mb-3"></canvas>
-    </div>
-    <div class="text-center mb-3">
-        <button id="prev" class="btn btn-primary me-2">上一张</button>
-        <!-- 页码输入框和跳转按钮 -->
-        <input type="number" id="pageIndex" class="text-center" style="width: 60px;">
-        <button id="goPage" class="btn btn-secondary me-2">跳转</button>
-        <button id="next" class="btn btn-primary">下一张</button>
-    </div>
-    <div class="slider text-center mb-3">
-        <input type="range" class="form-range" id="imageSlider" min="1" value="1">
-    </div>
+    <h1 class="mb-4 justify-content-center">EasyAnnot</h1>
+    <a class="btn btn-secondary me-2" href="/gallery">Video Gallery</a>
+    <a class="btn btn-secondary me-2" href="/synchronize">Annot Synchronization</a>
+    <a class="btn btn-secondary me-2" href="/clip">Annot Clips</a>
 </div>
-
-
-<div class="container mt-4">
-    <div class="btn-group btn-group-toggle" data-toggle="buttons">
-        <label class="btn btn-secondary active">
-        <input type="radio" name="options" id="modePoint" autocomplete="off" checked> Point
-        </label>
-        <label class="btn btn-secondary">
-        <input type="radio" name="options" id="modeLine" autocomplete="off"> Line
-        </label>
-        <label class="btn btn-secondary">
-        <input type="radio" name="options" id="modeBox" autocomplete="off"> Box
-        </label>
-    </div>  
-</div>
-
-<script src="{{ url_for('static', filename='scripts/browser.js') }}"></script>
-<!-- <script src="{{ url_for('static', filename='scripts/menu_mode.js') }}"></script> -->
-<!-- <script src="{{ url_for('static', filename='scripts/draw.js') }}"></script> -->
-
-<!-- <script>
-
-    let imageLoaded = false;
-
-    let startPoint = null; // 初始化起点为null
-
-    canvas.addEventListener('click', function(event) {
-        if (!imageLoaded) return;
-
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = image.naturalWidth / rect.width;
-        const scaleY = image.naturalHeight / rect.height;
-
-        const x = (event.clientX - rect.left) * scaleX;
-        const y = (event.clientY - rect.top) * scaleY;
-
-        switch (annotationMode) {
-            case 'point':
-                // 标注点
-                drawPoint(x/scaleX, y/scaleY);
-                break;
-            case 'line':
-                // 标注线，可能需要另一个点来完成
-                if (!startPoint) {
-                    startPoint = {x: x, y: y};
-                } else {
-                    drawLine(startPoint.x/scaleX, startPoint.y/scaleY, x/scaleX, y/scaleY);
-                    startPoint = null; // 重置起点
-                }
-                break;
-            case 'box':
-                // 标注框，可能需要另一个点来确定框的大小和位置
-                if (!startPoint) {
-                    startPoint = {x: x, y: y};
-                } else {
-                    drawBox(startPoint.x/scaleX, startPoint.y/scaleY, x/scaleX, y/scaleY);
-                    startPoint = null; // 重置起点
-                }
-                break;
-        }
-    }); -->
-
-    <!-- function saveAnnotation(annotation) {
-        fetch('/save_annotation', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(annotation),
-        })
-        .then(response => response.json())
-        .then(data => {
-            console.log('Success:', data);
-        })
-        .catch((error) => {
-            console.error('Error:', error);
-        });
-    } -->
-<!-- </script> -->
-
-<!-- <script src="{{ url_for('static', filename='scripts/mouse_cross.js') }}"></script> -->
 
 {% endblock %}

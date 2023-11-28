@@ -70,9 +70,10 @@
                 
                 data.forEach(annot => {
                     const keypoints3d = annot.keypoints3d;
+                    const color = getBoxColor(annot.id);
                     edges.forEach((edge, index) => {
                         // 初始化线段
-                        var material = new THREE.LineBasicMaterial({color: 0x0000ff});
+                        var material = new THREE.LineBasicMaterial({color: color});
                         var points = [
                             new THREE.Vector3(keypoints3d[edge[0]][0], keypoints3d[edge[0]][1], keypoints3d[edge[0]][2]),
                             new THREE.Vector3(keypoints3d[edge[1]][0], keypoints3d[edge[1]][1], keypoints3d[edge[1]][2])

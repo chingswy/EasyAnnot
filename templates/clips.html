@@ -1,0 +1,145 @@
+{% extends 'element/blank.html' %}
+
+{% block content_block %}
+        <!--  -->
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <img id="frameImage" src="{{ url_for('send_first_image', folder_name=subs[0]) }}" alt="Frame Image" class="img-fluid mb-3">
+        </div>
+    </div>
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <input type="range" id="frameSlider" class="form-range" min="0" max="{{ num_images }}" value="1" onchange="updateFrame()">
+        </div>
+    </div>
+    <!-- 显示当前帧号 -->
+    <div class="row justify-content-center my-2">
+        <div class="col-md-8">
+            <div id="currentFrameDisplay" class="alert alert-info">当前帧: 1</div>
+        </div>
+    </div>
+    <div class="row justify-content-center my-2">
+        <div class="col-md-8">
+            <div id="clipsVisualization" style="width: 100%; height: 20px; background-color: #eee; position: relative;">
+                <!-- 标注的clips将在这里以条形显示 -->
+            </div>
+        </div>
+    </div>
+    <div class="row justify-content-center">
+        <div class="col-md-8 d-flex justify-content-around my-2">
+            <button class="btn btn-primary" onclick="changeFrame(-30)">前30帧</button>
+            <button class="btn btn-primary" onclick="changeFrame(-10)">前10帧</button>
+            <button class="btn btn-primary" onclick="changeFrame(-1)">前1帧</button>
+            <button class="btn btn-primary" onclick="changeFrame(1)">后1帧</button>
+            <button class="btn btn-primary" onclick="changeFrame(10)">后10帧</button>
+            <button class="btn btn-primary" onclick="changeFrame(30)">后30帧</button>
+        </div>
+    </div>
+    <div class="row justify-content-center">
+        <div class="col-md-8 d-flex justify-content-around my-2">
+            <button class="btn btn-success" onclick="mark('start')">标记Start</button>
+            <button class="btn btn-success" onclick="mark('end')">标记End</button>
+            <button class="btn btn-warning" onclick="exportClip()">标记完成导出</button>
+        </div>
+    </div>
+    <!-- 显示clips列表 -->
+    <div class="row justify-content-center my-2">
+        <div class="col-md-8">
+            <div id="clipsList" class="alert alert-secondary">
+                <strong>当前Clips:</strong>
+                <ul id="clipsListItems">
+                    <!-- Clips条目将在这里显示 -->
+                </ul>
+            </div>
+        </div>
+    </div>
+
+</div>
+        
+{% endblock %}
+
+{% block script_block %}
+<script>
+    var num_frames = {{ num_images }};
+    var clips = [];
+    init();
+    function init(){
+        console.log('init');
+        console.log(num_frames);
+        document.getElementById('frameSlider').value = 0;
+        document.getElementById('frameSlider').min = 0;
+        document.getElementById('frameSlider').max = num_frames - 1;
+    }
+
+    function updateClipsVisualization() {
+        var container = document.getElementById('clipsVisualization');
+        container.innerHTML = ''; // 清除旧的条形图
+        var clipsList = document.getElementById('clipsListItems');
+        clipsList.innerHTML = ''; // 清空当前列表
+        clips.forEach(clip => {
+            var clipDiv = document.createElement('div');
+            clipDiv.style.position = 'absolute';
+            clipDiv.style.height = '100%';
+            clipDiv.style.backgroundColor = 'rgba(0, 128, 0, 0.5)'; // 绿色半透明
+            var left = (clip.start / num_frames) * 100;
+            var width = ((clip.end - clip.start) / num_frames) * 100;
+            clipDiv.style.left = left + '%';
+            clipDiv.style.width = width + '%';
+            container.appendChild(clipDiv);
+            // 
+            var listItem = document.createElement('li');
+            listItem.textContent = 'Start: ' + clip.start + ', End: ' + clip.end;
+            clipsList.appendChild(listItem);
+        });
+    }
+
+    var startFrame = 0;
+    var endFrame = 0;
+    var currentFrame = 1;
+
+    function updateFrame() {
+        currentFrame = document.getElementById('frameSlider').value;
+        console.log('update to', currentFrame);
+        document.getElementById('frameImage').src = `/send_i_image/{{ subs[0] }}/${currentFrame}`;
+        document.getElementById('currentFrameDisplay').textContent = '当前帧: ' + currentFrame;
+    }
+
+    function changeFrame(offset) {
+        currentFrame = parseInt(document.getElementById('frameSlider').value, 10);
+        currentFrame = currentFrame + offset;
+        document.getElementById('frameSlider').value = currentFrame;
+        updateFrame();
+    }
+
+    function mark(type) {
+        if (type === 'start') {
+            startFrame = currentFrame;
+            console.log('Start frame marked:', startFrame);
+        } else if (type === 'end') {
+            endFrame = currentFrame;
+            console.log('End frame marked:', endFrame);
+            clips.push({start: startFrame, end: endFrame});
+            updateClipsVisualization();
+        }
+    }
+
+    function exportClip() {
+        if (clips.length === 0) {
+            alert('没有标记任何clip');
+            return;
+        }
+
+        fetch('/save_clips', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ clips: clips }),
+        })
+    }
+
+
+
+</script>
+{% endblock %}
