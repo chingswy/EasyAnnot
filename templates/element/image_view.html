@@ -1,0 +1,32 @@
+<div class="container mt-4">
+    <h1 class="mb-4">{{ folder_name }}</h1>
+    <div class="justify-content-center">
+        <canvas id="imageCanvas" class="mb-3"></canvas>
+    </div>
+    <div class="text-center mb-3">
+        <button onclick="changeFrame(-100)" class="btn btn-primary me-2"> |< </button>
+        <button onclick="changeFrame(-50)" class="btn btn-primary me-2"> <<< </button>
+        <button onclick="changeFrame(-10)" class="btn btn-primary me-2"><< </button>
+        <button onclick="changeFrame(-1)" class="btn btn-primary me-2">< </button>
+
+        <input type="number" id="pageIndex" class="text-center" style="width: 120px;">
+        <button id="goPage" onclick="changeFrameByText()" class="btn btn-secondary me-2">跳转</button>
+        <button onclick="changeFrame(1)" class="btn btn-primary"> > </button>
+        <button onclick="changeFrame(10)" class="btn btn-primary">  >> </button>
+        <button onclick="changeFrame(50)" class="btn btn-primary"> >>> </button>
+        <button onclick="changeFrame(100)" class="btn btn-primary"> >| </button>
+    </div>
+    <div class="slider text-center mb-3">
+        <input type="range" class="form-range" id="imageSlider" onchange="changeFrameBySlider()" min="0" value="0">
+    </div>
+</div>
+
+<script>
+    var folder_name = "{{ folder_name }}";
+    var num_images = parseInt("{{ num_images }}", 10);
+    var currentFrame = 0;
+    var image;
+    const canvas = document.getElementById('imageCanvas');
+</script>
+
+<script src="{{ url_for('static', filename='scripts/load_image.js') }}"></script>

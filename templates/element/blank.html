@@ -10,6 +10,10 @@
     <script src="{{ url_for('static', filename='popper.min.js') }}"></script>
     <script src="{{ url_for('static', filename='bootstrap.min.js') }}"></script>
     <style>
+        .container {
+            padding: 0;
+            border: none;
+        }
         {% block style %} {% endblock %}
     </style>
 </head>

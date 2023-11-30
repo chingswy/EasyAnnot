@@ -1,0 +1,150 @@
+{% extends 'element/blank.html' %}
+
+{% block style %}
+{% endblock %}
+
+{% block content_block %}
+<div class="container-fluid mt-4">
+    <h1 class="mb-4" id="title">{{ first_images[0][0] }}</h1>
+
+    <div class="justify-content-center">
+        <canvas id="imageCanvas" class="mb-3"></canvas>
+    </div>
+    <div class="text-center mb-3">
+        <button class="btn btn-primary me-2" onclick="decreaseMarker()" id="decreaseMarker">-</button>
+        <span id="markerCount" class="badge bg-secondary mx-2">0</span> <!-- 使用徽章样式的计数器 -->
+        <button class="btn btn-primary me-2" onclick="increaseMarker()" id="increaseMarker">+</button>
+        <button class="btn btn-primary me-2">Triangulate</button>
+        <button class="btn btn-primary me-2">Update</button>
+        <button class="btn btn-primary me-2" id="export">Export</button>
+    </div>
+
+    <div class="row">
+        {% for folder, image in first_images %}
+        <div class="col-md-3">
+            <div class="card mb-4 shadow-sm">
+                <!-- Remove width and height attributes to maintain original aspect ratio -->
+                <img sub="{{ folder }}" src="{{ url_for('send_image', folder_name=folder, filename=image) }}"
+                    class="bd-placeholder-img card-img-top image-card">
+                <div class="card-body">
+                    <p class="card-text">{{ folder }}</p>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='scripts/image_canvas.js') }}"></script>
+<script src="{{ url_for('static', filename='scripts/color_utils.js') }}"></script>
+<script src="{{ url_for('static', filename='scripts/plot_utils.js') }}"></script>
+
+<script>
+
+const canvas = document.getElementById('imageCanvas');
+const ctx = canvas.getContext('2d');
+var images_sub_url = {{ first_images | tojson | safe }};
+console.log(images_sub_url);
+let currentSub = images_sub_url[0][0];
+
+let currentImage = new Image();
+let currentMarkerIndex = 0;
+
+
+let marks = {};  // 存储标注点 {sub: {markId: {x: Number, y: Number, color: String}, ...}}
+
+function fetchMarks() {
+    $.get('/query_points', function(data) {
+        marks = data; // 假设服务器返回的数据是正确格式的
+        console.log('Marks data fetched from server:', marks);
+    })
+    .fail(function(error) {
+        console.error('Error fetching marks from server:', error);
+    });
+}
+fetchMarks();
+
+function increaseMarker() {
+    currentMarkerIndex++;
+    $('#markerCount').text(currentMarkerIndex);
+    drawMarks();
+}
+
+function decreaseMarker() {
+    if (currentMarkerIndex > 0) {
+        currentMarkerIndex--;
+        $('#markerCount').text(currentMarkerIndex);
+        drawMarks();
+    }
+}
+
+// 绘制标注点
+function drawMarks() {
+    clearAndPlot(ctx, canvas, currentImage);
+    marks[currentSub].forEach(mark => {
+        console.log(mark);
+        pos = image2canvasPosition(canvas, currentImage, mark);
+        drawCross(ctx, pos.x, pos.y, mark.color)
+        ctx.font = '12px Arial';
+        ctx.fillStyle = 'white';
+        ctx.fillText(mark.id, pos.x + 6, pos.y);
+    });
+}
+
+$(document).ready(function () {
+    currentImage.src = $('.image-card').first().attr('src');
+    currentImage.onload = function () {
+        setCanvasSize(canvas, currentImage); // Set canvas size
+        clearAndPlot(ctx, canvas, currentImage);
+        drawMarks();
+    }
+
+    // 图片点击事件
+    $('.card').on('click', '.image-card', function () {
+        const imageUrl = $(this).attr('src');
+        currentSub = $(this).attr('sub');
+        $('#title').text(currentSub);
+        // ID reset to max of this view
+        currentMarkerIndex = 0;
+        marks[currentSub].forEach(mark => {
+            currentMarkerIndex = mark.id + 1;
+        })
+        $('#markerCount').text(currentMarkerIndex);
+        updateImage(currentImage, imageUrl);
+    });
+
+    // Canvas点击事件
+    $('#imageCanvas').click(function (e) {
+        const pos = getMousePosition(canvas, e);
+        const markId = currentMarkerIndex;  // 生成唯一标识
+        const color = randomColors[markId % randomColors.length];
+        var pos_img = getImagePosition(canvas, currentImage, pos);
+        marks[currentSub].push({ id: markId, x: pos_img.x, y: pos_img.y, color: color});
+        increaseMarker();
+        // 发送标注数据到后端
+        // $.post('/api/marks', { markId, x, y, color });
+    });
+
+    // export 函数
+    $('#export').click(function () {
+        // 这里需要将marks resize
+
+        fetch('/export_points', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(marks)
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+        })
+        .catch((error) => {
+            console.error('Error:', error);
+        });
+        
+    });
+  });
+</script>
+{% endblock %}

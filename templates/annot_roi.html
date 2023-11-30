@@ -1,0 +1,112 @@
+{% extends 'element/blank.html' %}
+
+{% block content_block %}
+
+{% with folder_name = folder_name, num_images=num_images %}
+    {% include 'element/image_view.html' %}
+{% endwith %}
+
+<div class="container text-center mt-4">
+    <form id="coordinatesForm" method="post" action="/submit-coordinates">
+        <label for="inputL" class="form-label">Left:</label>
+        <input type="number" class="form-control" name="L" id="inputL">
+        <label for="inputT" class="form-label">Top:</label>
+        <input type="number" class="form-control" name="T" id="inputT">
+        <label for="inputR" class="form-label">Right:</label>
+        <input type="number" class="form-control" name="R" id="inputR">
+        <label for="inputB" class="form-label">Bottom:</label>
+        <input type="number" class="form-control" name="B" id="inputB">
+        <input type="submit" class="btn btn-primary mt-4" value="submit">
+    </form>
+</div>
+
+<script>
+    var drawingCanvas = canvas;
+    var drawingCtx = ctx;
+    var rect = [];
+    var isDrawing, isResizing = false;
+
+    function drawRect(x, y, x1, y1) {
+        drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+        drawingCtx.drawImage(image, 0, 0, drawingCanvas.width, drawingCanvas.height);
+        drawingCtx.beginPath();
+        drawingCtx.rect(x, y, x1 - x, y1 - y);
+        drawingCtx.stroke();
+    }
+
+    function updateCoordinateInputs(l, t, r, b) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = image.naturalWidth / drawingCanvas.width;
+        const scaleY = image.naturalHeight / drawingCanvas.height;
+        document.getElementById('inputL').value = l * scaleX;
+        document.getElementById('inputT').value = t * scaleY;
+        document.getElementById('inputR').value = r * scaleX;
+        document.getElementById('inputB').value = b * scaleY;
+    }
+
+    // 其余的JavaScript代码保持不变
+
+    function _update_frame(index){
+        load_image(currentFrame);
+        image.onload = function() {
+            setCanvasSize(image); // Set canvas size
+            drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            drawingCtx.drawImage(image, 0, 0, drawingCanvas.width, drawingCanvas.height);
+            drawingCtx.beginPath();
+            if(rect.length > 0){
+                drawRect(rect[0], rect[1], rect[2], rect[3]);
+            }
+            drawingCtx.stroke();
+        }
+    }
+
+    window._update_frame = _update_frame;
+
+    function getMousePosition(event) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;    // canvas实际宽度与显示宽度的比例
+        const scaleY = canvas.height / rect.height;  // canvas实际高度与显示高度的比例
+
+        return {
+            x: (event.clientX - rect.left) * scaleX,  // 调整鼠标X坐标
+            y: (event.clientY - rect.top) * scaleY    // 调整鼠标Y坐标
+        };
+    }
+
+    function detectEdge(mouseX, mouseY) {
+            // Logic to detect if the mouse is near any edge of the rectangle
+        }
+
+    drawingCanvas.addEventListener('mousedown', (e) => {
+        const pos = getMousePosition(e);
+        selectedEdge = detectEdge(pos.x, pos.y);
+
+        if (selectedEdge) {
+            isResizing = true;
+        } else {
+            startX = pos.x;
+            startY = pos.y;
+            isDrawing = true;
+        }
+    });
+
+    drawingCanvas.addEventListener('mousemove', (e) => {
+        if (isDrawing) {
+            const pos = getMousePosition(e);
+            endX = pos.x;
+            endY = pos.y;
+            rect = [startX, startY, endX, endY];
+            drawRect(startX, startY, endX, endY);
+            updateCoordinateInputs(startX, startY, endX, endY);
+        } else if (isResizing) {
+            // Update the rectangle size based on the selected edge and mouse position
+        }
+    });
+
+    drawingCanvas.addEventListener('mouseup', () => {
+        isDrawing = false;
+        isResizing = false;
+    });
+</script>
+
+{% endblock %}
