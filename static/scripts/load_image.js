@@ -1,13 +1,5 @@
 const ctx = canvas.getContext('2d');
-
-function setCanvasSize(image) {
-    const width = document.querySelector('.container').offsetWidth;
-    canvas.width = width;
-    canvas.height = width * (image.naturalHeight / image.naturalWidth); // 保持宽高比
-    console.log('set canvas size', canvas.width, canvas.height);
-    const rect = canvas.getBoundingClientRect();
-    console.log('rect', rect);
-}
+var scaleX = 1, scaleY = 1;
 
 const pageIndexInput = document.getElementById('pageIndex');
 const imageSlider = document.getElementById('imageSlider');
@@ -20,9 +12,10 @@ function init(){
     image.src = `/send_first_image/${folder_name}`;
     // Once the image has loaded, draw it and then the annotations
     image.onload = function() {
-        setCanvasSize(image); // Set canvas size
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        setCanvasSize(canvas, image); // Set canvas size
+        clearAndPlot(ctx, canvas, image);
+        scaleX = image.naturalWidth / drawingCanvas.width;
+        scaleY = image.naturalHeight / drawingCanvas.height;
     }
 }
 
@@ -31,8 +24,10 @@ function load_image(index){
     image.src = `/send_i_image/${folder_name}/${index}`;
     // Once the image has loaded, draw it and then the annotations
     image.onload = function() {
-        setCanvasSize(image); // Set canvas size
-        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        setCanvasSize(canvas, image); // Set canvas size
+        clearAndPlot(ctx, canvas, image);
+        scaleX = image.naturalWidth / drawingCanvas.width;
+        scaleY = image.naturalHeight / drawingCanvas.height;
     }
 }
 

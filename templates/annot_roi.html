@@ -6,19 +6,42 @@
     {% include 'element/image_view.html' %}
 {% endwith %}
 
-<div class="container text-center mt-4">
-    <form id="coordinatesForm" method="post" action="/submit-coordinates">
-        <label for="inputL" class="form-label">Left:</label>
-        <input type="number" class="form-control" name="L" id="inputL">
-        <label for="inputT" class="form-label">Top:</label>
-        <input type="number" class="form-control" name="T" id="inputT">
-        <label for="inputR" class="form-label">Right:</label>
-        <input type="number" class="form-control" name="R" id="inputR">
-        <label for="inputB" class="form-label">Bottom:</label>
-        <input type="number" class="form-control" name="B" id="inputB">
-        <input type="submit" class="btn btn-primary mt-4" value="submit">
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-1 d-flex align-items-center">
+            <label for="modeSelect" class="form-label">选择模式:</label>
+        </div>
+        <div class="col-md-2 d-flex align-items-center">
+            <select class="form-select" id="modeSelect">
+                <option value="free">Mode 1: Free</option>
+                <option value="rectangle">Mode 2: Rectangle</option>
+                <option value="fixedSize">Mode 3: Fixed Size Rectangle</option>
+            </select>
+        </div>
+        <div class="col-md-1 d-flex align-items-center">
+            <label for="fixedSizeInput" class="form-label">FixedSize:</label>
+        </div>
+        <div class="col-md-1 d-flex align-items-center">
+            <input type="number" class="form-control" id="fixedSizeInput">
+        </div>
+    </div>
+
+
+    <form id="coordinatesForm" method="post" action="/submit_roi/{{ folder_name }}">
+        <label for="inputL" class="col-2 form-label">Left:</label>
+        <input type="number" class="col-2 form-control" name="L" id="inputL">
+        <label for="inputT" class="col-2 form-label">Top:</label>
+        <input type="number" class="col-2 form-control" name="T" id="inputT">
+        <label for="inputR" class="col-2 form-label">Right:</label>
+        <input type="number" class="col-2 form-control" name="R" id="inputR">
+        <label for="inputB" class="col-2 form-label">Bottom:</label>
+        <input type="number" class="col-2 form-control" name="B" id="inputB">
+        <input type="submit" class="col-2 btn btn-primary mt-4" value="submit">
     </form>
 </div>
+
+<script src="{{ url_for('static', filename='scripts/image_canvas.js') }}"></script>
+<script src="{{ url_for('static', filename='scripts/plot_utils.js') }}"></script>
 
 <script>
     var drawingCanvas = canvas;
@@ -26,86 +49,87 @@
     var rect = [];
     var isDrawing, isResizing = false;
 
-    function drawRect(x, y, x1, y1) {
-        drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-        drawingCtx.drawImage(image, 0, 0, drawingCanvas.width, drawingCanvas.height);
-        drawingCtx.beginPath();
-        drawingCtx.rect(x, y, x1 - x, y1 - y);
-        drawingCtx.stroke();
-    }
-
     function updateCoordinateInputs(l, t, r, b) {
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = image.naturalWidth / drawingCanvas.width;
-        const scaleY = image.naturalHeight / drawingCanvas.height;
-        document.getElementById('inputL').value = l * scaleX;
-        document.getElementById('inputT').value = t * scaleY;
-        document.getElementById('inputR').value = r * scaleX;
-        document.getElementById('inputB').value = b * scaleY;
+        document.getElementById('inputL').value = Math.round(l);
+        document.getElementById('inputT').value = Math.round(t);
+        document.getElementById('inputR').value = Math.round(r);
+        document.getElementById('inputB').value = Math.round(b);
     }
 
+    function fetchMarks() {
+        $.get('/query_roi/{{ folder_name }}', function(data) {
+            rect = data; // 假设服务器返回的数据是正确格式的
+            console.log('Marks data fetched from server:', rect);
+            if(rect.length > 0){
+                drawRect(drawingCtx, rect[0]/scaleX, rect[1]/scaleY, rect[2]/scaleX, rect[3]/scaleY);
+            }
+        })
+        .fail(function(error) {
+            console.error('Error fetching marks from server:', error);
+        });
+    }
+    fetchMarks();
     // 其余的JavaScript代码保持不变
 
     function _update_frame(index){
         load_image(currentFrame);
         image.onload = function() {
-            setCanvasSize(image); // Set canvas size
-            drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-            drawingCtx.drawImage(image, 0, 0, drawingCanvas.width, drawingCanvas.height);
-            drawingCtx.beginPath();
+            setCanvasSize(drawingCanvas, image); // Set canvas size
+            clearAndPlot(drawingCtx, drawingCanvas, image); // Clear canvas and plot image
+            scaleX = image.naturalWidth / drawingCanvas.width;
+            scaleY = image.naturalHeight / drawingCanvas.height;
+            console.log(scaleX, scaleY);
             if(rect.length > 0){
-                drawRect(rect[0], rect[1], rect[2], rect[3]);
+                drawRect(drawingCtx, rect[0]/scaleX, rect[1]/scaleY, rect[2]/scaleX, rect[3]/scaleY);
             }
-            drawingCtx.stroke();
         }
     }
 
     window._update_frame = _update_frame;
 
-    function getMousePosition(event) {
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;    // canvas实际宽度与显示宽度的比例
-        const scaleY = canvas.height / rect.height;  // canvas实际高度与显示高度的比例
-
-        return {
-            x: (event.clientX - rect.left) * scaleX,  // 调整鼠标X坐标
-            y: (event.clientY - rect.top) * scaleY    // 调整鼠标Y坐标
-        };
-    }
-
-    function detectEdge(mouseX, mouseY) {
-            // Logic to detect if the mouse is near any edge of the rectangle
-        }
-
     drawingCanvas.addEventListener('mousedown', (e) => {
-        const pos = getMousePosition(e);
-        selectedEdge = detectEdge(pos.x, pos.y);
-
-        if (selectedEdge) {
-            isResizing = true;
-        } else {
-            startX = pos.x;
-            startY = pos.y;
-            isDrawing = true;
-        }
+        const pos = getMousePosition(drawingCanvas, e);
+        const pos_image = getImagePosition(drawingCanvas, image, pos);
+        startX = pos_image.x;
+        startY = pos_image.y;
+        isDrawing = true;
     });
 
     drawingCanvas.addEventListener('mousemove', (e) => {
         if (isDrawing) {
-            const pos = getMousePosition(e);
-            endX = pos.x;
-            endY = pos.y;
+            setCanvasSize(drawingCanvas, image); // Set canvas size
+            clearAndPlot(drawingCtx, drawingCanvas, image); // Clear canvas and plot image
+            const pos = getMousePosition(drawingCanvas, e);
+            const pos_image = getImagePosition(drawingCanvas, image, pos);
+            const currentMode = document.getElementById('modeSelect').value;
+            const fixedSize = parseInt(document.getElementById('fixedSizeInput').value, 10) || 0;
+
+            switch (currentMode) {
+                case 'free':
+                    // Free mode: Update endX and endY normally
+                    endX = pos_image.x;
+                    endY = pos_image.y;
+                    break;
+                case 'rectangle':
+                    // Rectangle mode: Update endX and endY normally
+                    endX = pos_image.x;
+                    endY = pos_image.y;
+                    break;
+                case 'fixedSize':
+                    // Fixed size rectangle mode
+                    endX = startX + fixedSize;
+                    endY = startY + fixedSize;
+                    break;
+            }
+
             rect = [startX, startY, endX, endY];
-            drawRect(startX, startY, endX, endY);
+            drawRect(drawingCtx, startX/scaleX, startY/scaleY, endX/scaleX, endY/scaleY);
             updateCoordinateInputs(startX, startY, endX, endY);
-        } else if (isResizing) {
-            // Update the rectangle size based on the selected edge and mouse position
         }
     });
 
     drawingCanvas.addEventListener('mouseup', () => {
         isDrawing = false;
-        isResizing = false;
     });
 </script>
 

@@ -14,7 +14,7 @@
         <button class="btn btn-primary me-2" onclick="decreaseMarker()" id="decreaseMarker">-</button>
         <span id="markerCount" class="badge bg-secondary mx-2">0</span> <!-- 使用徽章样式的计数器 -->
         <button class="btn btn-primary me-2" onclick="increaseMarker()" id="increaseMarker">+</button>
-        <button class="btn btn-primary me-2">Triangulate</button>
+        <button class="btn btn-primary me-2" id="triangulate">Triangulate</button>
         <button class="btn btn-primary me-2">Update</button>
         <button class="btn btn-primary me-2" id="export">Export</button>
     </div>
@@ -52,6 +52,12 @@ let currentMarkerIndex = 0;
 
 
 let marks = {};  // 存储标注点 {sub: {markId: {x: Number, y: Number, color: String}, ...}}
+let marks3d = {};
+
+images_sub_url.forEach(sub_url => {
+    marks[sub_url[0]] = [];
+    marks3d[sub_url[0]] = [];
+});
 
 function fetchMarks() {
     $.get('/query_points', function(data) {
@@ -88,6 +94,29 @@ function drawMarks() {
         ctx.font = '12px Arial';
         ctx.fillStyle = 'white';
         ctx.fillText(mark.id, pos.x + 6, pos.y);
+    });
+    marks3d[currentSub].forEach(mark => {
+        console.log(mark);
+        pos = image2canvasPosition(canvas, currentImage, mark);
+        drawCross(ctx, pos.x, pos.y, mark.color)
+        ctx.font = '12px Arial';
+        ctx.fillStyle = 'red';
+        ctx.fillText(mark.id, pos.x + 6, pos.y);
+    });
+    // 然后检查匹配的ID并绘制连线
+    marks[currentSub].forEach(mark1 => {
+        marks3d[currentSub].forEach(mark2 => {
+            if (mark1.id === mark2.id) {
+                // 如果ID匹配，绘制连线
+                const pos1 = image2canvasPosition(canvas, currentImage, mark1);
+                const pos2 = image2canvasPosition(canvas, currentImage, mark2);
+                ctx.beginPath();
+                ctx.moveTo(pos1.x, pos1.y);
+                ctx.lineTo(pos2.x, pos2.y);
+                ctx.strokeStyle = mark1.color; // 或者选择一个合适的颜色
+                ctx.stroke();
+            }
+        });
     });
 }
 
@@ -139,6 +168,28 @@ $(document).ready(function () {
         .then(response => response.json())
         .then(data => {
             alert(data.message);
+        })
+        .catch((error) => {
+            console.error('Error:', error);
+        });
+        
+    });
+
+    // triangulate 函数
+    $('#triangulate').click(function () {
+        // 这里需要将marks resize
+        fetch('/triangulate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(marks)
+        })
+        .then(response => response.json())
+        .then(data => {
+            marks3d = data;
+            console.log(marks3d);
+            drawMarks();
         })
         .catch((error) => {
             console.error('Error:', error);

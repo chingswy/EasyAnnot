@@ -6,7 +6,6 @@ app = Flask(__name__, template_folder='templates', static_folder='static')
 
 IMAGE_FOLDER = os.path.join('static', 'data')
 
-
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -69,22 +68,37 @@ if True:
     def roi():
         first_images = get_first_images()
         return render_template('index_roi.html', first_images=first_images)
-
+    
+    ROI_NAME = os.path.join(ROOT, 'roi.json')
     @app.route('/annot_roi/<string:folder_name>')
     def annot_roi(folder_name):
         return render_template('annot_roi.html', folder_name=folder_name, num_images=len(filenames[folder_name]))
     
-    @app.route('/submit_roi', methods=['POST'])
-    def submit_roi():
-        x = request.form['x']
-        y = request.form['y']
-        width = request.form['width']
-        height = request.form['height']
-
-        # 在这里处理坐标数据
-        # 例如，保存到数据库或执行其他操作
-
-        return '坐标已提交：X={}, Y={}, Width={}, Height={}'.format(x, y, width, height)
+    @app.route('/query_roi/<string:folder_name>', methods=['GET'])
+    def query_roi(folder_name):
+        if os.path.exists(ROI_NAME):
+            with open(ROI_NAME, 'r') as f:
+                rois = json.load(f)
+        else:
+            rois = {}
+            for sub in filenames.keys():
+                rois[sub] = []
+            with open(ROI_NAME, 'w') as f:
+                json.dump(rois, f, indent=4)
+        return jsonify(rois[folder_name])
+    
+    @app.route('/submit_roi/<string:folder_name>', methods=['POST'])
+    def submit_roi(folder_name):
+        L = int(request.form['L'])
+        T = int(request.form['T'])
+        R = int(request.form['R'])
+        B = int(request.form['B'])
+        with open(ROI_NAME, 'r') as f:
+            rois = json.load(f)
+        rois[folder_name] = [L, T, R, B]
+        with open(ROI_NAME, 'w') as f:
+            json.dump(rois, f, indent=4)
+        return render_template('annot_roi.html', folder_name=folder_name, num_images=len(filenames[folder_name]))
 
 if True:
     # 标注匹配点的操作
@@ -115,6 +129,57 @@ if True:
         with open(POINTS_NAME, 'w') as f:
             json.dump(data, f, indent=4)
         return jsonify({"status": "success", "message": "Marks data received"})
+
+    @app.route('/triangulate', methods=['POST'])
+    def triangulate():
+        datas = request.get_json()
+        print(datas)
+        import numpy as np
+        from easymocap.mytools.camera_utils import read_cameras
+        cameras = read_cameras(os.path.join(ROOT, 'ba'))
+        # 阅读匹配点
+        # 阅读相机参数
+        # 三角化
+        cams = list(cameras.keys())
+        Pall = np.stack([cameras[c]['P'] for c in cams], axis=0)
+        records2d = np.zeros((len(cams), 1000, 3))
+        colors = {}
+        max_id = -1
+        for nv, sub in enumerate(cams):
+            data = datas[sub]
+            for annot in data:
+                pid = annot['id']
+                if pid > max_id:
+                    max_id = pid
+                    colors[pid] = annot['color']
+                x, y = annot['x'], annot['y']
+                records2d[nv, pid, 0] = x
+                records2d[nv, pid, 1] = y
+                records2d[nv, pid, 2] = 1.
+        # (nViews, nPoints, 3)
+        records2d = records2d[:, :max_id+1, :]
+        from easymocap.mytools.camera_utils import Undistort
+        for nv in range(records2d.shape[0]):
+            records2d[nv] = Undistort.points(records2d[nv], cameras[cams[nv]]['K'], cameras[cams[nv]]['dist'])
+        from library.triangulate import batch_triangulate, project_wo_dist, project_w_dist
+        k3d = batch_triangulate(records2d, Pall)
+        # k2d_repro: (nViews, nPoints, 3: (x, y, conf))
+        k2d_repro, depth = project_wo_dist(k3d, Pall)
+        for nv in range(records2d.shape[0]):
+            camera = {key: cameras[cams[nv]][key] for key in ['K', 'R', 'T', 'dist']}
+            _k2d_repro, _depth = project_w_dist(k3d, camera)
+            k2d_repro[nv] = _k2d_repro
+        ret = {}
+        for i, sub in enumerate(cams):
+            ret[sub] = []
+            for j in range(k3d.shape[0]):
+                ret[sub].append({
+                    'id': j,
+                    'x': float(k2d_repro[i, j, 0]),
+                    'y': float(k2d_repro[i, j, 1]),
+                    'color': colors[j]
+                })
+        return jsonify(ret)
 
 @app.route('/gallery')
 def gallery():
@@ -188,4 +253,5 @@ def save_annotation():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=3456, host='0.0.0.0')
+    debug = True
+    app.run(debug=debug, port=3456, host='0.0.0.0')
