@@ -1,0 +1,89 @@
+{% extends 'element/blank.html' %}
+
+{% block content_block %}
+
+<div class="container mt-3">
+    <div class="d-flex justify-content-center" id="vis3d">
+
+    </div>
+</div>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "../../static/three/three.module.js",
+            "three/addons/": "../../static/three/jsm/"
+        }
+    }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+import { getChessboard, getCoordinate } from '../static/scripts3d/create_ground.js';
+import { create_scene } from '../static/scripts3d/create_scene.js';
+import { visualizeSkeleton, visualizeAllSkeleton } from '../static/scripts3d/draw_skeleton.js';
+
+let scene, camera, renderer;
+let controls;
+let infos;
+let currentFrame = 0;
+let total_frame = 0;
+const intervalTime = 30.; // 每帧之间的时间间隔，单位毫秒
+
+const playFrames = () => {
+    visualizeAllSkeleton(infos[currentFrame], scene);
+    currentFrame += 1;
+    // 检查是否到达第一帧或最后一帧
+    if (currentFrame === total_frame) {
+        currentFrame = 0; // 重播
+    }
+}
+
+// JavaScript 代码来请求关键点数据并进行可视化
+fetch('/query_keypoints')
+    .then(response => response.json())
+    .then(datas => {
+        console.log(datas);
+        infos = datas;
+        total_frame = datas.length;
+        const intervalId = setInterval(playFrames, intervalTime);
+        animate();
+    });
+
+init();
+function init() {
+    const width = document.querySelector('.container').offsetWidth;
+    const height = width * 9 / 16;
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera( 60, width / height, 0.01, 100 );
+    renderer = new THREE.WebGLRenderer( { antialias: true } );
+
+    // Scene, camera and renderer setup
+    create_scene(scene, camera, renderer, true);
+    // renderer
+    renderer.setPixelRatio( window.devicePixelRatio );
+    renderer.setSize( width, height );
+    // add to DOM
+    var container = document.getElementById('vis3d');
+    container.appendChild( renderer.domElement );
+
+    controls = new OrbitControls( camera, renderer.domElement );
+    controls.minDistance = 1;
+    controls.maxDistance = 10;
+
+}
+
+function animate() {
+    requestAnimationFrame( animate );
+    renderer.render( scene, camera );
+}
+
+</script>
+
+
+
+
+{% endblock %}

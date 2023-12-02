@@ -2,6 +2,30 @@
 
 ## Usage
 
+可视化3D骨架序列：
+
+```python
+python3 vis_keypoints3d.py --root ${root} --port 2345
+```
+
+${root}目录包含一序列的3D骨架数据，格式为：
+```bash
+- 000000.json
+[
+    {
+        'id': 0,
+        'keypoints3d': [[x0, y0, z0, c0], [x1, y1, z1, c1], ...],
+    },
+    {
+        'id': 1,
+        'keypoints3d': [[x0, y0, z0, c0], [x1, y1, z1, c1], ...],
+    }
+]
+- 000001.json
+...
+```
+
+
 1. 标注视频的多个clip
 
 > prompt: 我正在使用python+flask实现一个数据标注网站，请帮我进行网站设计。我已经正确设置好网站所需的环境，你可以省略这部分，只用回答功能部分代码。
