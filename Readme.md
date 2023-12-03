@@ -27,6 +27,34 @@ ${root}目录包含一序列的3D骨架数据，格式为：
 
 ### 2. 可视化SMPL序列: 
 
+```python
+python3 vis_keypoints3d.py --root ${root} --port 2345
+```
+
+假设同一段数据里，每个人的shape参数不会发生变化。${root}目录包含一序列的SMPL参数，格式为：
+```bash
+- 000000.json
+[
+    {
+        'id': 0,
+        'shapes': [[s0, s1, s2, s3, ..., s9]],
+        'poses': [[p0, p1, p2, p3, ..., p72]],
+        'Rh': [[r0, r1, r2]],
+        'Th': [[t0, t1, t2]]
+    },
+    {
+        'id': 1,
+        'shapes': [[s0, s1, s2, s3, ..., s9]],
+        'poses': [[p0, p1, p2, p3, ..., p72]],
+        'Rh': [[r0, r1, r2]],
+        'Th': [[t0, t1, t2]]
+    }
+]
+- 000001.json
+...
+```
+
+
 ## 标注部分
 
 启动：
