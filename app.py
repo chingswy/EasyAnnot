@@ -22,9 +22,9 @@ def index3d():
 
 def prepare_dataset(root):
     filenames = {}
-    subs = sorted(os.listdir(os.path.join(root, 'images')))
+    subs = sorted(os.listdir(os.path.join(root, IMAGES)))
     for sub in subs:
-        filenames[sub] = sorted(os.listdir(os.path.join(root, 'images', sub)))
+        filenames[sub] = sorted(os.listdir(os.path.join(root, IMAGES, sub)))
     return filenames
 
 
@@ -37,7 +37,7 @@ if True:
     # Route to display all images within a folder
     @app.route('/folder/<folder_name>')
     def show_folder(folder_name):
-        folder_path = os.path.join(ROOT, 'images', folder_name)
+        folder_path = os.path.join(ROOT, IMAGES, folder_name)
         if os.path.isdir(folder_path):
             images = sorted([img for img in os.listdir(folder_path) if img.endswith('.jpg')])
             return render_template('image_folder.html', folder_name=folder_name, images=images)
@@ -46,16 +46,16 @@ if True:
 
     @app.route('/images/<string:folder_name>/<string:filename>')
     def send_image(folder_name, filename):
-        return send_from_directory(os.path.join(ROOT, 'images', folder_name), filename)
+        return send_from_directory(os.path.join(ROOT, IMAGES, folder_name), filename)
 
     @app.route('/send_i_image/<string:folder_name>/<int:index>')
     def send_i_image(folder_name, index):
-        return send_from_directory(os.path.join(ROOT, 'images', folder_name), filenames[folder_name][index])
+        return send_from_directory(os.path.join(ROOT, IMAGES, folder_name), filenames[folder_name][index])
 
     @app.route('/send_first_image/<folder_name>')
     def send_first_image(folder_name):
         filename = filenames[folder_name][0]
-        return send_from_directory(os.path.join(ROOT, 'images', folder_name), filename)
+        return send_from_directory(os.path.join(ROOT, IMAGES, folder_name), filename)
 
     @app.route('/get_num_images/<folder_name>')
     def get_num_images(folder_name):
@@ -81,6 +81,10 @@ if True:
             rois = {}
             for sub in filenames.keys():
                 rois[sub] = []
+            with open(ROI_NAME, 'w') as f:
+                json.dump(rois, f, indent=4)
+        if folder_name not in rois:
+            rois[folder_name] = []
             with open(ROI_NAME, 'w') as f:
                 json.dump(rois, f, indent=4)
         return jsonify(rois[folder_name])
@@ -132,7 +136,7 @@ if True:
         print(datas)
         import numpy as np
         from easymocap.mytools.camera_utils import read_cameras
-        cameras = read_cameras(os.path.join(ROOT, 'ba'))
+        cameras = read_cameras(os.path.join(ROOT, CAMERAS))
         # 阅读匹配点
         # 阅读相机参数
         # 三角化
@@ -147,6 +151,7 @@ if True:
                 pid = annot['id']
                 if pid > max_id:
                     max_id = pid
+                if pid not in colors:
                     colors[pid] = annot['color']
                 x, y = annot['x'], annot['y']
                 records2d[nv, pid, 0] = x
@@ -184,7 +189,7 @@ def gallery():
 
 @app.route('/synchronize')
 def synchronize():
-    first_images = get_first_images(os.path.join(ROOT, 'images'))
+    first_images = get_first_images(os.path.join(ROOT, IMAGES))
     return render_template('index_gallery.html', first_images=first_images)
 
 if True:
@@ -217,8 +222,8 @@ if True:
             clips = json.load(f)
         for clip in clips:
             start, end = clip['start'], clip['end']
-            outdir = os.path.join(ROOT, 'clips', f'{start}_{end}', 'images')
-            subs = sorted(os.listdir(os.path.join(ROOT, 'images')))
+            outdir = os.path.join(ROOT, 'clips', f'{start}_{end}', IMAGES)
+            subs = sorted(os.listdir(os.path.join(ROOT, IMAGES)))
             print(clip)
             for sub in subs:
                 outdir_sub = os.path.join(outdir, sub)
@@ -226,7 +231,7 @@ if True:
                 for new_frame, frame in enumerate(tqdm(range(start, end+1))):
                     filename = filenames[sub][frame]
                     dstname = os.path.join(outdir_sub, f'{new_frame:06d}.jpg')
-                    srcname = os.path.join(ROOT, 'images', sub, filename)
+                    srcname = os.path.join(ROOT, IMAGES, sub, filename)
                     if os.path.exists(dstname):
                         continue
                     shutil.copy(srcname, dstname)
@@ -281,11 +286,25 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--root', type=str)
+    parser.add_argument('--images', type=str, default='images')
     parser.add_argument('--port', type=int, default=3456)
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
     ROOT = args.root
+    IMAGES = args.images
+    CAMERAS = ''
+
+    try:
+        if os.path.exists(os.path.join(ROOT, '_annotations')):
+            shutil.rmtree(os.path.join(ROOT, '_annotations'))
+        os.makedirs(os.path.join(ROOT, '_annotations'))
+    except PermissionError:
+        print('Permission denied, please check the path')
+        exit()
+    # check if this file is updated
+    # if not, seems error, exit
+    # if yes, continue
     filenames = prepare_dataset(ROOT)
     CLIP_NAME = os.path.join(ROOT, 'clips.json')
     MV_CLIP_NAME = os.path.join(ROOT, 'clips_mv.json')
