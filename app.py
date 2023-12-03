@@ -27,7 +27,6 @@ def prepare_dataset(root):
         filenames[sub] = sorted(os.listdir(os.path.join(root, IMAGES, sub)))
     return filenames
 
-
 def get_first_images():
     first_images = [(sub, filename[0]) for sub, filename in filenames.items()]
     return first_images

@@ -1,0 +1,134 @@
+{% extends 'element/blank.html' %}
+
+{% block content_block %}
+
+<div class="container mt-3">
+    <div class="d-flex justify-content-center" id="vis3d">
+
+    </div>
+</div>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "../../static/three/three.module.js",
+            "three/addons/": "../../static/three/jsm/"
+        }
+    }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+import { getChessboard, getCoordinate } from '../static/scripts3d/create_ground.js';
+import { create_scene } from '../static/scripts3d/create_scene.js';
+import { load_smpl_with_shapes } from '../static/scripts3d/load_smpl.js';
+
+let scene, camera, renderer;
+let controls;
+let infos;
+let currentFrame = 0;
+let total_frame = 0;
+const intervalTime = 30.; // 每帧之间的时间间隔，单位毫秒
+var model_mesh = {};
+
+const playFrames = () => {
+    // visualizeAllSkeleton(infos[currentFrame], scene);
+    const info = infos[currentFrame];
+    info.forEach(smpl_params => {
+        const bones = model_mesh[smpl_params.id];
+        bones[0].position.x = smpl_params.Th[0][0];
+        bones[0].position.y = smpl_params.Th[0][1];
+        bones[0].position.z = smpl_params.Th[0][2];
+
+        var axis = new THREE.Vector3(smpl_params.Rh[0][0], smpl_params.Rh[0][1], smpl_params.Rh[0][2]);
+        var angle = axis.length();
+        axis.normalize();
+        // 创建一个四元数表示旋转
+        var quaternion = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+        bones[0].quaternion.copy(quaternion);
+        var poses_offset = 0;
+        if(smpl_params.poses[0].length == 69){
+            poses_offset = -3;
+        }
+        for (let i = 1; i < bones.length; i++) {
+            var axis = new THREE.Vector3(
+                smpl_params.poses[0][poses_offset+3*i], 
+                smpl_params.poses[0][poses_offset+3*i+1],
+                smpl_params.poses[0][poses_offset+3*i+2]);
+            var angle = axis.length();
+            axis.normalize();
+            // 创建一个四元数表示旋转
+            var quaternion = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+            bones[i].quaternion.copy(quaternion);
+        }
+    });
+    currentFrame += 1;
+    // 检查是否到达第一帧或最后一帧
+    if (currentFrame === total_frame) {
+        currentFrame = 0; // 重播
+    }
+}
+
+// JavaScript 代码来请求关键点数据并进行可视化
+fetch('/query_smpl')
+    .then(response => response.json())
+    .then(datas => {
+        infos = datas;
+        total_frame = datas.length;
+        // make skeletons
+        infos[0].forEach(data => {
+            load_smpl_with_shapes(data.shapes[0]).then(result => {
+                scene.add(result.mesh);
+                const skeletonHelper = new THREE.SkeletonHelper(result.mesh);
+                scene.add(skeletonHelper);
+                model_mesh[data.id] = result.bones;
+                scene.add(mesh);
+            });
+        });
+        const intervalId = setInterval(playFrames, intervalTime);
+        animate();
+    });
+
+init();
+
+function init() {
+    const width = document.querySelector('.container').offsetWidth;
+    const height = width * 9 / 16;
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera( 60, width / height, 0.01, 100 );
+    renderer = new THREE.WebGLRenderer( { antialias: true } );
+
+    // Scene, camera and renderer setup
+    create_scene(scene, camera, renderer, true);
+    // renderer
+    renderer.setPixelRatio( window.devicePixelRatio );
+    renderer.setSize( width, height );
+    // add to DOM
+    var container = document.getElementById('vis3d');
+    container.appendChild( renderer.domElement );
+
+    controls = new OrbitControls( camera, renderer.domElement );
+    controls.minDistance = 1;
+    controls.maxDistance = 10;
+
+}
+
+function animate() {
+    requestAnimationFrame( animate );
+    renderer.render( scene, camera );
+}
+
+</script>
+
+{% endblock %}
+
+{% block help %}
+
+需求：四肢和身体骨架用不同颜色
+
+需求：增加播放控件，设置播放帧率和播放暂停
+
+{% endblock %}
