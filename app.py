@@ -1,4 +1,6 @@
 import os
+import shutil
+from tqdm import tqdm
 import json
 from flask import Flask, render_template, request, jsonify, send_from_directory, abort
 
@@ -17,8 +19,6 @@ def index3d():
 # Index route to display the first image of each folder
 
 # Function to get the first image from each folder
-ROOT = '/mnt/v01/clips/HuMiD-yukagawa-clips'
-ROOT = os.environ['ROOT']
 
 def prepare_dataset(root):
     filenames = {}
@@ -27,7 +27,6 @@ def prepare_dataset(root):
         filenames[sub] = sorted(os.listdir(os.path.join(root, 'images', sub)))
     return filenames
 
-filenames = prepare_dataset(ROOT)
 
 def get_first_images():
     first_images = [(sub, filename[0]) for sub, filename in filenames.items()]
@@ -41,7 +40,7 @@ if True:
         folder_path = os.path.join(ROOT, 'images', folder_name)
         if os.path.isdir(folder_path):
             images = sorted([img for img in os.listdir(folder_path) if img.endswith('.jpg')])
-            return render_template('folder.html', folder_name=folder_name, images=images)
+            return render_template('image_folder.html', folder_name=folder_name, images=images)
         else:
             return 'Folder not found', 404
 
@@ -69,7 +68,6 @@ if True:
         first_images = get_first_images()
         return render_template('index_roi.html', first_images=first_images)
     
-    ROI_NAME = os.path.join(ROOT, 'roi.json')
     @app.route('/annot_roi/<string:folder_name>')
     def annot_roi(folder_name):
         return render_template('annot_roi.html', folder_name=folder_name, num_images=len(filenames[folder_name]))
@@ -107,8 +105,6 @@ if True:
         first_images = get_first_images()
         return render_template('index_match_points.html', first_images=first_images)
     
-    POINTS_NAME = os.path.join(ROOT, 'match_points.json')
-
     @app.route('/query_points', methods=['GET'])
     def query_points():
         if os.path.exists(POINTS_NAME):
@@ -191,20 +187,49 @@ def synchronize():
     first_images = get_first_images(os.path.join(ROOT, 'images'))
     return render_template('index_gallery.html', first_images=first_images)
 
-@app.route('/clip')
-def clip():
-    subs = list(filenames.keys())
-    num_images = len(filenames[subs[0]])
-    return render_template('clips.html', subs=subs, num_images=num_images)
+if True:
+    @app.route('/clip')
+    def clip():
+        subs = list(filenames.keys())
+        num_images = len(filenames[subs[0]])
+        if os.path.exists(CLIP_NAME):
+            with open(CLIP_NAME, 'r') as f:
+                clips = json.load(f)
+        else:
+            clips = []
+            with open(CLIP_NAME, 'w') as f:
+                json.dump(clips, f)
+        return render_template('annot_clip.html', subs=subs, num_images=num_images, clips=clips)
 
-@app.route('/save_clips', methods=['POST'])
-def save_clips():
-    data = request.json
-    clips = data.get('clips')
-    print(clips)
-    # 这里添加处理clips的逻辑，比如保存到数据库或文件
-    # 例如：save_to_database(clips)
-    return jsonify({'status': 'success', 'message': 'Clips data received and processed'}), 200
+    @app.route('/save_clips', methods=['POST'])
+    def save_clips():
+        data = request.json
+        clips = data.get('clips')
+        with open(CLIP_NAME, 'w') as f:
+            json.dump(clips, f, indent=4)
+        # 这里添加处理clips的逻辑，比如保存到数据库或文件
+        # 例如：save_to_database(clips)
+        return jsonify({'status': 'success', 'message': 'Clips data received and processed'}), 200
+    
+    @app.route('/copy_clips', methods=['GET'])
+    def copy_clips():
+        with open(CLIP_NAME, 'r') as f:
+            clips = json.load(f)
+        for clip in clips:
+            start, end = clip['start'], clip['end']
+            outdir = os.path.join(ROOT, 'clips', f'{start}_{end}', 'images')
+            subs = sorted(os.listdir(os.path.join(ROOT, 'images')))
+            print(clip)
+            for sub in subs:
+                outdir_sub = os.path.join(outdir, sub)
+                os.makedirs(outdir_sub, exist_ok=True)
+                for new_frame, frame in enumerate(tqdm(range(start, end+1))):
+                    filename = filenames[sub][frame]
+                    dstname = os.path.join(outdir_sub, f'{new_frame:06d}.jpg')
+                    srcname = os.path.join(ROOT, 'images', sub, filename)
+                    if os.path.exists(dstname):
+                        continue
+                    shutil.copy(srcname, dstname)
 
 @app.route('/annotations/<folder_name>/<image_name>')
 def get_annotations(folder_name, image_name):
@@ -253,5 +278,18 @@ def save_annotation():
 
 
 if __name__ == '__main__':
-    debug = True
-    app.run(debug=debug, port=3456, host='0.0.0.0')
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--root', type=str)
+    parser.add_argument('--port', type=int, default=3456)
+    parser.add_argument('--debug', action='store_true')
+    args = parser.parse_args()
+
+    ROOT = args.root
+    filenames = prepare_dataset(ROOT)
+    CLIP_NAME = os.path.join(ROOT, 'clips.json')
+    MV_CLIP_NAME = os.path.join(ROOT, 'clips_mv.json')
+    ROI_NAME = os.path.join(ROOT, 'roi.json')
+    POINTS_NAME = os.path.join(ROOT, 'match_points.json')
+
+    app.run(debug=args.debug, port=args.port, host='0.0.0.0')

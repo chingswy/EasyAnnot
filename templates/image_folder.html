@@ -1,0 +1,9 @@
+{% extends 'element/blank.html' %}
+
+{% block content_block %}
+
+{% with folder_name = folder_name, num_images=images | length %}
+    {% include 'element/image_view.html' %}
+{% endwith %}
+
+{% endblock %}

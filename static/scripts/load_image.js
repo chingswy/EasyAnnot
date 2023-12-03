@@ -14,8 +14,8 @@ function init(){
     image.onload = function() {
         setCanvasSize(canvas, image); // Set canvas size
         clearAndPlot(ctx, canvas, image);
-        scaleX = image.naturalWidth / drawingCanvas.width;
-        scaleY = image.naturalHeight / drawingCanvas.height;
+        scaleX = image.naturalWidth / canvas.width;
+        scaleY = image.naturalHeight / canvas.height;
     }
 }
 
@@ -26,8 +26,8 @@ function load_image(index){
     image.onload = function() {
         setCanvasSize(canvas, image); // Set canvas size
         clearAndPlot(ctx, canvas, image);
-        scaleX = image.naturalWidth / drawingCanvas.width;
-        scaleY = image.naturalHeight / drawingCanvas.height;
+        scaleX = image.naturalWidth / canvas.width;
+        scaleY = image.naturalHeight / canvas.height;
     }
 }
 

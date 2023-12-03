@@ -50,7 +50,7 @@ function create_scene(scene, camera, renderer, use_ground=true){
     scene.add(directionalLight);
 
     if(use_ground){
-        var plane = getChessboard();
+        var plane = getChessboard(10, 10);
         scene.add(plane);
 
         var coord = getCoordinate(1);
