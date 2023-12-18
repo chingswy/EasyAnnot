@@ -1,0 +1,23 @@
+<!-- gallery for any sub functions -->
+{% extends 'element/blank.html' %}
+
+
+{% block content_block %}
+    <div class="container mt-4">
+        <div class="row">
+            {% for folder, image in first_images %}
+            <div class="col-md-4">
+                <div class="card mb-4 shadow-sm">
+                  <a href="{{ href }}/{{ folder }}">
+                    <!-- Remove width and height attributes to maintain original aspect ratio -->
+                    <img src="{{ url_for('send_image', folder_name=folder, filename=image) }}" class="bd-placeholder-img card-img-top">
+                  </a>
+                  <div class="card-body">
+                    <p class="card-text">{{ folder }}</p>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+        </div>
+    </div>
+{% endblock %}

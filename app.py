@@ -3,6 +3,7 @@ import shutil
 from tqdm import tqdm
 import json
 from flask import Flask, render_template, request, jsonify, send_from_directory, abort
+import yaml
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
@@ -20,10 +21,25 @@ def index3d():
 
 # Function to get the first image from each folder
 
+def read_yaml(filename):
+    if not os.path.exists(filename):
+        if input(f'File {filename} not found, do you want to create a new one? (y/n)') == 'y':
+            write_yaml(filename, {})
+        else:
+            return 0
+    with open(filename, 'r') as f:
+        data = yaml.load(f, Loader=yaml.FullLoader)
+    return data
+
+def write_yaml(filename, data):
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    with open(filename, 'w') as f:
+        yaml.dump(data, f)
+
 def prepare_dataset(root):
     filenames = {}
     subs = sorted(os.listdir(os.path.join(root, IMAGES)))
-    for sub in subs:
+    for sub in tqdm(subs):
         filenames[sub] = sorted(os.listdir(os.path.join(root, IMAGES, sub)))
     return filenames
 
@@ -280,6 +296,32 @@ def save_annotation():
     print(data)  # 这里仅打印数据，实际应用中你可能需要将其存储在数据库中
     return jsonify(success=True)
 
+if True: # vanish points
+    @app.route('/vanish')
+    def vanish():
+        first_images = get_first_images()
+        return render_template('index_any.html', first_images=first_images, href='annot_vanish')
+
+    @app.route('/annot_vanish/<string:folder_name>')
+    def annot_vanish(folder_name):
+        return render_template('annot_vanish.html', folder_name=folder_name, num_images=len(filenames[folder_name]))
+    
+    @app.route('/submit_vanish/<string:folder_name>', methods=['POST'])
+    def submit_vanish(folder_name):
+        lines = request.json['lines']
+        record = read_yaml(VANISH_NAME)
+        record[folder_name] = lines
+        write_yaml(VANISH_NAME, record)
+        # 处理 lines 数据
+        return jsonify({"status": "success"})
+
+    @app.route('/query_vanish/<string:folder_name>', methods=['GET'])
+    def query_vanish(folder_name):
+        record =read_yaml(VANISH_NAME)
+        if folder_name not in record:
+            record[folder_name] = {}
+        # 处理 lines 数据
+        return jsonify(record[folder_name])    
 
 if __name__ == '__main__':
     import argparse
@@ -287,6 +329,7 @@ if __name__ == '__main__':
     parser.add_argument('--root', type=str)
     parser.add_argument('--images', type=str, default='images')
     parser.add_argument('--port', type=int, default=3456)
+    parser.add_argument('--readonly', action='store_true')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
@@ -294,13 +337,14 @@ if __name__ == '__main__':
     IMAGES = args.images
     CAMERAS = ''
 
-    try:
-        if os.path.exists(os.path.join(ROOT, '_annotations')):
-            shutil.rmtree(os.path.join(ROOT, '_annotations'))
-        os.makedirs(os.path.join(ROOT, '_annotations'))
-    except PermissionError:
-        print('Permission denied, please check the path')
-        exit()
+    if not args.readonly:
+        try:
+            if os.path.exists(os.path.join(ROOT, '_annotations')):
+                shutil.rmtree(os.path.join(ROOT, '_annotations'))
+            os.makedirs(os.path.join(ROOT, '_annotations'))
+        except PermissionError:
+            print('Permission denied, please check the path')
+            exit()
     # check if this file is updated
     # if not, seems error, exit
     # if yes, continue
@@ -309,5 +353,6 @@ if __name__ == '__main__':
     MV_CLIP_NAME = os.path.join(ROOT, 'clips_mv.json')
     ROI_NAME = os.path.join(ROOT, 'roi.json')
     POINTS_NAME = os.path.join(ROOT, 'match_points.json')
+    VANISH_NAME = os.path.join(ROOT, 'vanish_points.yml')
 
     app.run(debug=args.debug, port=args.port, host='0.0.0.0')

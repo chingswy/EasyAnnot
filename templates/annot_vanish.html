@@ -1,0 +1,174 @@
+{% extends 'element/blank.html' %}
+
+{% block content_block %}
+
+{% with folder_name = folder_name, num_images=num_images %}
+{% include 'element/image_view.html' %}
+{% endwith %}
+
+<div class="container mt-4">
+    <div class="mb-3">
+        <span>Select Axis: </span>
+        <div class="btn-group" role="group" aria-label="Mode Switch">
+            <input type="radio" class="btn-check" name="mode" id="modeX" autocomplete="off" checked>
+            <label class="btn btn-outline-primary" for="modeX">X</label>
+
+            <input type="radio" class="btn-check" name="mode" id="modeY" autocomplete="off">
+            <label class="btn btn-outline-primary" for="modeY">Y</label>
+
+            <input type="radio" class="btn-check" name="mode" id="modeZ" autocomplete="off">
+            <label class="btn btn-outline-primary" for="modeZ">Z</label>
+        </div>
+        <!-- 提交按钮 -->
+        <button id="submitLines" class="btn btn-primary">Submit</button>
+        <!-- 删除按钮 -->
+        <button id="deleteLastLine" class="btn btn-warning">Delete Last Line</button>
+        <button id="deleteAllLinesInMode" class="btn btn-danger">Delete All Lines</button>
+
+    </div>
+
+</div>
+
+<script src="{{ url_for('static', filename='scripts/image_canvas.js') }}"></script>
+<script src="{{ url_for('static', filename='scripts/plot_utils.js') }}"></script>
+
+<script>
+    var drawingCanvas = canvas;
+    var drawingCtx = ctx;
+    let currentMode = 'X';
+    let lines = { X: [], Y: [], Z: [] }; // 用于存储所有模式下的线条
+
+    let isDrawing = false;
+    let startX = 0;
+    let startY = 0;
+    // 初始化监听器
+    document.querySelectorAll('.btn-check').forEach(button => {
+        button.addEventListener('change', function () {
+            currentMode = this.id.replace('mode', '');
+        });
+    });
+
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mousemove', drawLine);
+
+
+    function fetchMarks() {
+        $.get('/query_vanish/{{ folder_name }}', function (data) {
+            lines = data; // 假设服务器返回的数据是正确格式的
+            console.log('Marks data fetched from server:', lines);
+            drawAllLines();
+        })
+            .fail(function (error) {
+                console.error('Error fetching marks from server:', error);
+            });
+    }
+    fetchMarks();
+    document.getElementById('submitLines').addEventListener('click', function () {
+        const url = '/submit_vanish/{{ folder_name }}'; // Flask后端的URL
+        const data = { lines: lines };
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Success:', data);
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+            });
+    });
+
+    // 其余的JavaScript代码保持不变
+
+    function _update_frame(index) {
+        load_image(currentFrame);
+        image.onload = function () {
+            setCanvasSize(drawingCanvas, image); // Set canvas size
+            clearAndPlot(drawingCtx, drawingCanvas, image); // Clear canvas and plot image
+            scaleX = image.naturalWidth / drawingCanvas.width;
+            scaleY = image.naturalHeight / drawingCanvas.height;
+            console.log(scaleX, scaleY);
+            drawAllLines();
+        }
+    }
+
+    window._update_frame = _update_frame;
+
+    function startDrawing(e) {
+        const pos = getMousePosition(drawingCanvas, e);
+        const pos_image = getImagePosition(drawingCanvas, image, pos);
+        startX = pos_image.x;
+        startY = pos_image.y;
+        isDrawing = true;
+    };
+
+    function stopDrawing(e) {
+        if (!isDrawing) return;
+        isDrawing = false;
+        setCanvasSize(drawingCanvas, image); // Set canvas size
+        clearAndPlot(drawingCtx, drawingCanvas, image); // Clear canvas and plot image
+        const pos = getMousePosition(drawingCanvas, e);
+        const pos_image = getImagePosition(drawingCanvas, image, pos);
+        endX = pos_image.x;
+        endY = pos_image.y;
+        lines[currentMode].push({ startX, startY, endX, endY });
+        // 绘制线条
+        drawAllLines();
+    };
+
+    function drawLine(e) {
+        if (!isDrawing) return;
+        setCanvasSize(drawingCanvas, image); // Set canvas size
+        clearAndPlot(drawingCtx, drawingCanvas, image); // Clear canvas and plot image
+        // 绘制实时的线条，不记录
+        ctx.beginPath();
+        ctx.strokeStyle = getModeColor(currentMode); // 根据当前模式设置颜色
+        ctx.moveTo(startX / scaleX, startY / scaleY);
+        ctx.lineTo(e.offsetX, e.offsetY);
+        ctx.stroke();
+    }
+
+    function getModeColor(mode) {
+        switch (mode) {
+            case 'X': return 'red';
+            case 'Y': return 'green';
+            case 'Z': return 'blue';
+            default: return 'black';
+        }
+    }
+
+    function drawAllLines() {
+        for (const mode in lines) {
+            ctx.strokeStyle = getModeColor(mode); // 设置不同模式的线条颜色
+            lines[mode].forEach(line => {
+                ctx.beginPath();
+                ctx.moveTo(line.startX / scaleX, line.startY / scaleY);
+                ctx.lineTo(line.endX / scaleX, line.endY / scaleY);
+                ctx.stroke();
+            });
+        }
+    }
+
+    document.getElementById('deleteLastLine').addEventListener('click', function () {
+        lines[currentMode].pop();
+        setCanvasSize(drawingCanvas, image); // Set canvas size
+        clearAndPlot(drawingCtx, drawingCanvas, image); // Clear canvas and plot image
+        drawAllLines();
+    });
+
+    document.getElementById('deleteAllLinesInMode').addEventListener('click', function () {
+        lines[currentMode] = [];
+        setCanvasSize(drawingCanvas, image); // Set canvas size
+        clearAndPlot(drawingCtx, drawingCanvas, image); // Clear canvas and plot image
+        drawAllLines();
+    });
+
+</script>
+
+{% endblock %}

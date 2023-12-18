@@ -89,3 +89,43 @@ python3 app.py --root ${root} --port 3456
 
 ### 3. 标注矩形区域
 
+TODO
+
+### 4. 标注vanishing lines
+
+0. File Structure
+
+```bash
+root
+- images
+    - video0
+        - 000000.jpg
+        - 000001.jpg
+        ...
+    - video1
+    - video2
+    ...
+```
+
+1. Start
+
+```bash
+data=/path/to/image_data
+python3 app.py --root ${data} --port 2345
+```
+
+Open the browser:
+
+```
+http://0.0.0.0:2345/vanish
+```
+
+Select one folder and click in.
+
+2. Annotate
+
+通过选择轴功能选择当前标注的X/Y/Z轴，在图像上点击并拖动即可画线。
+一般定义与地面平行的两个垂直的方向为X/Y轴，垂直于地面指向上的方向为Z轴。
+
+绘制完成后点击提交即可保存标注结果。请确保在数据目录下有写入的权限。数据会保存到`${data}/vanish_points.yml`中。
+
