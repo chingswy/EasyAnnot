@@ -318,8 +318,8 @@ if True: # vanish points
     @app.route('/query_vanish/<string:folder_name>', methods=['GET'])
     def query_vanish(folder_name):
         record =read_yaml(VANISH_NAME)
-        if folder_name not in record:
-            record[folder_name] = {}
+        if folder_name not in record or len(record[folder_name].keys()) == 0:
+            record[folder_name] = {'X': [], 'Y': [], 'Z': []}
         # 处理 lines 数据
         return jsonify(record[folder_name])    
 
