@@ -1,0 +1,131 @@
+{% extends 'element/blank.html' %}
+
+{% block content_block %}
+
+<div class="container mt-3">
+    <div class="d-flex justify-content-center" id="vis3d">
+
+    </div>
+</div>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "../../static/three/three.module.js",
+            "three/addons/": "../../static/three/jsm/"
+        }
+    }
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.6/build/dat.gui.min.js"></script>
+<script type="module">
+import * as THREE from 'three';
+
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { create_scene } from '../static/scripts3d/create_scene.js';
+
+let scene, camera, renderer;
+let pointCloud, material;
+let gui, options;
+
+let controls;
+let infos;
+let currentFrame = 0;
+let total_frame = 0;
+
+
+init();
+animate();
+
+function make_example_pointcloud(){
+    // 创建点云和颜色数据
+    let points = [];
+    let colors = [];
+    for (let i = 0; i < 10000; i++) {
+        points.push(new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1));
+
+        // 为每个点随机生成颜色
+        colors.push(Math.random(), Math.random(), Math.random());
+    }
+    return [points, colors];
+}
+
+function init() {
+    const width = document.querySelector('.container').offsetWidth;
+    const height = width * 9 / 16;
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera( 60, width / height, 0.01, 100 );
+    renderer = new THREE.WebGLRenderer( { antialias: true } );
+
+    // Scene, camera and renderer setup
+    create_scene(scene, camera, renderer, false);
+    // renderer
+    renderer.setPixelRatio( window.devicePixelRatio );
+    renderer.setSize( width, height );
+    // add to DOM
+    var container = document.getElementById('vis3d');
+    container.appendChild( renderer.domElement );
+
+    controls = new OrbitControls( camera, renderer.domElement );
+    controls.minDistance = 1;
+    controls.maxDistance = 10;
+
+    // 创建点云
+    let [points, colors] = make_example_pointcloud();
+    let geometry = new THREE.BufferGeometry().setFromPoints(points);
+    geometry.setAttribute('vertexColor', new THREE.Float32BufferAttribute(colors, 3));
+    
+    // 自定义着色器材质
+    let material = new THREE.ShaderMaterial({
+        uniforms: {
+            pointSize: { value: 1.0 }
+        },
+        vertexShader: `
+            attribute vec3 vertexColor;
+            varying vec3 vColor;
+            uniform float pointSize;
+            void main() {
+                vColor = vertexColor;
+                gl_PointSize = pointSize;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vColor;
+            uniform float pointSize;
+            void main() {
+                float dist = length(gl_PointCoord - vec2(0.5, 0.5));
+
+                // 将距离标准化为点半径的比例
+                if (dist > pointSize / 2.) {
+                    discard; // 如果片元在点半径之外，则不渲染
+                }
+                gl_FragColor = vec4(vColor, 1.0);
+            }
+        `,
+        vertexColors: true
+    });
+
+    pointCloud = new THREE.Points(geometry, material);
+
+    // 添加 GUI 控件
+    options = {
+        pointSize: 0.1
+    };
+    gui = new dat.GUI();
+    gui.add(options, 'pointSize', 0.01, 10.0).onChange(value => {
+        material.uniforms.pointSize.value = value;
+        material.needsUpdate = true;
+    });
+
+    scene.add(pointCloud);
+}
+
+function animate() {
+    requestAnimationFrame( animate );
+    renderer.render( scene, camera );
+}
+
+</script>
+
+{% endblock %}
