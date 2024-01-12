@@ -6,6 +6,9 @@
     <div class="d-flex justify-content-center" id="vis3d">
 
     </div>
+    <p id="coordinates">
+        xxx
+    </p>
 </div>
 
 <script type="importmap">
@@ -17,22 +20,23 @@
     }
 </script>
 
-<script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.6/build/dat.gui.min.js"></script>
+<script src="static/dat.gui.min.js"></script>
 <script type="module">
 import * as THREE from 'three';
 
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 import { create_scene } from '../static/scripts3d/create_scene.js';
+import { getCoordinate } from '../static/scripts3d/create_ground.js';
 
 let scene, camera, renderer;
 let pointCloud, material;
 let gui, options;
+var raycaster = new THREE.Raycaster();
+raycaster.params.Points.threshold = 0.1; // 调整这个值以适应你的点云密度
 
 let controls;
-let infos;
-let currentFrame = 0;
-let total_frame = 0;
-
+let boxHelper;
 
 init();
 animate();
@@ -50,13 +54,78 @@ function make_example_pointcloud(){
     return [points, colors];
 }
 
+// 使用顶点颜色创建材质
+const default_points_size = 0.05;
+const material_pcd = new THREE.PointsMaterial({ vertexColors: true, size: default_points_size});
+function make_bounding(scene, gui){
+    const box = new THREE.Box3(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
+    boxHelper = new THREE.Box3Helper(box, 0x000000);
+    scene.add(boxHelper);
+    // add GUI
+    const boxFolder = gui.addFolder('BoundingBox');
+    const boxMin = boxFolder.addFolder('Min');
+    const boxMax = boxFolder.addFolder('Max');
+
+    boxMin.add(box.min, 'x', -10, 10).onChange(updateBox);
+    boxMin.add(box.min, 'y', -10, 10).onChange(updateBox);
+    boxMin.add(box.min, 'z', -10, 10).onChange(updateBox);
+    boxMax.add(box.max, 'x', -10, 10).onChange(updateBox);
+    boxMax.add(box.max, 'y', -10, 10).onChange(updateBox);
+    boxMax.add(box.max, 'z', -10, 10).onChange(updateBox);
+
+    function updateBox() {
+        // 移除旧的Box3Helper
+        scene.remove(boxHelper);
+
+        // 更新Box3的边界
+        box.set(new THREE.Vector3(box.min.x, box.min.y, box.min.z), new THREE.Vector3(box.max.x, box.max.y, box.max.z));
+
+        // 创建新的Box3Helper并添加到场景中
+        boxHelper = new THREE.Box3Helper(box, 0x000000);
+        scene.add(boxHelper);
+    }
+
+}
+
+function make_coord(scene){
+    var coord = getCoordinate(1);
+    scene.add(coord);
+}
+
+var mouse = new THREE.Vector2();
+
+function onMouseClick(event) {
+    // 将鼠标位置转换为NDC空间
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+    // 使用射线投射器查找交互点
+    raycaster.setFromCamera(mouse, camera);
+
+    // 获取射线与点云的交集
+    var intersects = raycaster.intersectObject(pointCloud);
+    console.log(intersects);
+    if (intersects.length > 0) {
+        // 获取交互点的坐标
+        var point = intersects[0].point;
+
+        // 显示坐标
+        displayCoordinates(point);
+    }
+}
+
+function displayCoordinates(point) {
+    // 在网页上显示坐标
+    // 例如，使用一个HTML元素来显示
+    document.getElementById("coordinates").innerText = `X: ${point.x.toFixed(2)}, Y: ${point.y.toFixed(2)}, Z: ${point.z.toFixed(2)}`;
+}
+
 function init() {
     const width = document.querySelector('.container').offsetWidth;
     const height = width * 9 / 16;
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera( 60, width / height, 0.01, 100 );
     renderer = new THREE.WebGLRenderer( { antialias: true } );
-
     // Scene, camera and renderer setup
     create_scene(scene, camera, renderer, false);
     // renderer
@@ -67,11 +136,12 @@ function init() {
     container.appendChild( renderer.domElement );
 
     controls = new OrbitControls( camera, renderer.domElement );
-    controls.minDistance = 1;
-    controls.maxDistance = 10;
+    controls.minDistance = 0.1;
+    controls.maxDistance = 100;
 
     // 创建点云
     let [points, colors] = make_example_pointcloud();
+
     let geometry = new THREE.BufferGeometry().setFromPoints(points);
     geometry.setAttribute('vertexColor', new THREE.Float32BufferAttribute(colors, 3));
     
@@ -110,15 +180,30 @@ function init() {
 
     // 添加 GUI 控件
     options = {
-        pointSize: 0.1
+        pointSize: 1.
     };
     gui = new dat.GUI();
-    gui.add(options, 'pointSize', 0.01, 10.0).onChange(value => {
+    gui.add(options, 'pointSize', 0.1, 1.0).onChange(value => {
+        material_pcd.size = value * default_points_size;
         material.uniforms.pointSize.value = value;
         material.needsUpdate = true;
     });
 
-    scene.add(pointCloud);
+    const loader = new PLYLoader();
+    console.log("load {{ plyname }}");
+    const timestamp = Date.now();
+    const plyFilePath = '{{ plyname }}';
+    const scale3d = parseFloat('{{ scale3d }}');
+    loader.load(`${plyFilePath}?v=${timestamp}`, function(geometry) {
+        geometry.computeVertexNormals();
+        const ply = new THREE.Points(geometry, material_pcd);
+        ply.scale.set(scale3d, scale3d, scale3d);
+        scene.add(ply);
+    });
+    make_bounding(scene, gui);
+    make_coord(scene);
+    // scene.add(pointCloud);
+    renderer.domElement.addEventListener('click', onMouseClick, false);
 }
 
 function animate() {
