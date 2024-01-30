@@ -17,11 +17,15 @@ setup(
     author_email="s_q@zju.edu.cn",
     description="A simple tool for annotating data",
     long_description_content_type="text/markdown",
-    long_description=open("README.md").read(),
+    long_description=open("Readme.md").read(),
     packages=find_packages(exclude=('examples', 'examples.*')),
-    scripts=glob.glob('scripts/*'),
+    entry_points={
+        'console_scripts': [
+            'easyannot=easyannot.command.main:main_entrypoint',
+        ],
+    },
     install_requires=['flask'],
     package_data={
-        'easyannot': ['static/*']
+        'easyannot': ['static/*', 'templates/*']
     }
 )

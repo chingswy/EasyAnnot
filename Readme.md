@@ -1,5 +1,27 @@
 # EasyAnnot
 
+## Install
+
+```bash
+pip install easyannot
+```
+
+## Vis Cameras
+
+```bash
+easyannot camera ./
+```
+
+## Vis Synchronized Multiple Images
+
+```bash
+easyannot images ./images
+```
+
+
+## Deprecated
+
+
 ## Usage
 
 ### 1. 可视化3D骨架序列：

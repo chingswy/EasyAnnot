@@ -1,0 +1,149 @@
+{% extends 'element/blank.html' %}
+
+{% block content_block %}
+
+<div class="container mt-3">
+    <div class="d-flex justify-content-center" id="vis3d">
+
+    </div>
+</div>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "../../static/three/three.module.js",
+            "three/addons/": "../../static/three/jsm/"
+        }
+    }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+import { getChessboard, getCoordinate } from '../static/scripts3d/create_ground.js';
+import { create_scene } from '../static/scripts3d/create_scene.js';
+import { visualizeSkeleton, visualizeAllSkeleton } from '../static/scripts3d/draw_skeleton.js';
+
+let scene, camera, renderer;
+let controls;
+let infos;
+let currentFrame = 0;
+let total_frame = 0;
+const intervalTime = 30.; // 每帧之间的时间间隔，单位毫秒
+
+function init_scene(){
+    const width = document.querySelector('.container').offsetWidth;
+    const height = width * 9 / 16;
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera( 60, width / height, 0.01, 100 );
+    renderer = new THREE.WebGLRenderer( { antialias: true } );
+
+    // Scene, camera and renderer setup
+    create_scene(scene, camera, renderer, true);
+    // renderer
+    renderer.setPixelRatio( window.devicePixelRatio );
+    renderer.setSize( width, height );
+    // add to DOM
+    var container = document.getElementById('vis3d');
+    container.appendChild( renderer.domElement );
+
+    controls = new OrbitControls( camera, renderer.domElement );
+    controls.minDistance = 1;
+    controls.maxDistance = 100;
+}
+
+
+function init() {
+    init_scene();
+}
+
+function animate() {
+    requestAnimationFrame( animate );
+    renderer.render( scene, camera );
+}
+
+init();
+
+// JavaScript 代码来请求关键点数据并进行可视化
+fetch('/query_cameras')
+    .then(response => response.json())
+    .then(datas => {
+        const indices = [
+            0, 1,
+            0, 2,
+            0, 3,
+            0, 4,
+            1, 2,
+            2, 3,
+            3, 4
+        ]
+        datas.forEach(data => {
+            console.log(data.imgname);
+            console.log(data.center);
+            const points = data.location.map(point => new THREE.Vector3(...point));
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            geometry.setIndex(indices); // 设置线条的索引
+
+            // 创建线条的材质
+            const material = new THREE.LineBasicMaterial({ color: 0x0000ff });
+
+            // 创建线条对象
+            const lineSegments = new THREE.LineSegments(geometry, material);
+            // 将线条添加到场景中
+            scene.add(lineSegments);
+
+            // const textureImage = data.imgname;
+            // const planeGeometry = new THREE.PlaneGeometry(1, 0.75);  // 长宽比例可以根据实际情况调整
+            // const textureLoader = new THREE.TextureLoader();
+            // const texture = textureLoader.load(textureImage);
+            // const planeMaterial = new THREE.MeshBasicMaterial({
+            //     map: texture, 
+            //     side: THREE.DoubleSide});
+            // const planeMesh = new THREE.Mesh(planeGeometry, planeMaterial);
+            // planeMesh.position.set(data.center[0], data.center[1], data.center[2]);
+            // const matrix = new THREE.Matrix4(data.rotation);
+            // // planeMesh.matrix = matrix;
+            // // planeMesh.matrixAutoUpdate = false;
+            // scene.add(planeMesh);
+        });
+        // infos = datas;
+        // total_frame = datas.length;
+        // const intervalId = setInterval(playFrames, intervalTime);
+        animate();
+    });
+
+// const textureImage = "images/video0/000000.jpg"
+// const planeGeometry = new THREE.PlaneGeometry(1, 0.75);  // 长宽比例可以根据实际情况调整
+// const textureLoader = new THREE.TextureLoader();
+// const texture = textureLoader.load(textureImage);
+// const planeMaterial = new THREE.MeshBasicMaterial({
+//     map: texture, 
+//     side: THREE.DoubleSide});
+// const planeMesh = new THREE.Mesh(planeGeometry, planeMaterial);
+
+// // 定位长方形到相机前方一定距离处
+// planeMesh.translateZ(-2);  // 例如向相机后方移动2单位
+
+// scene.add(planeMesh);
+// // 创建线条
+// const material = new THREE.LineBasicMaterial({ color: 0x0000ff });
+// const points = [];
+// points.push(new THREE.Vector3(0, 0, 0));  // 相机中心
+
+// planeGeometry.vertices.forEach(vertex => {
+//     const globalVertex = vertex.clone().applyMatrix4(planeMesh.matrix);
+//     points.push(globalVertex);
+//     points.push(new THREE.Vector3(0, 0, 0));  // 回到相机中心
+// });
+
+// const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+// const line = new THREE.LineSegments(lineGeometry, material);
+// scene.add(line);
+
+// animate();
+
+</script>
+
+{% endblock %}
