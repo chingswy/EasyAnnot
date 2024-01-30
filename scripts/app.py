@@ -40,7 +40,8 @@ def prepare_dataset(root):
     filenames = {}
     subs = sorted(os.listdir(os.path.join(root, IMAGES)))
     for sub in tqdm(subs):
-        filenames[sub] = sorted(os.listdir(os.path.join(root, IMAGES, sub)))
+        if os.path.isdir(os.path.join(root, IMAGES, sub)):
+            filenames[sub] = sorted(os.listdir(os.path.join(root, IMAGES, sub)))
     return filenames
 
 def get_first_images():
@@ -317,7 +318,8 @@ if True: # vanish points
 
     @app.route('/query_vanish/<string:folder_name>', methods=['GET'])
     def query_vanish(folder_name):
-        record =read_yaml(VANISH_NAME)
+        record = read_yaml(VANISH_NAME)
+        print(record)
         if folder_name not in record or len(record[folder_name].keys()) == 0:
             record[folder_name] = {'X': [], 'Y': [], 'Z': []}
         # 处理 lines 数据
