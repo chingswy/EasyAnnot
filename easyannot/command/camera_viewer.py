@@ -33,6 +33,9 @@ camera_location = np.array([
 def get_cameras():
     root = app.config['ROOT']
     from easymocap.mytools.camera_utils import read_cameras
+    if not os.path.exists(root):
+        # return empty list
+        return jsonify([])
     cameras = read_cameras(root)
     cameras_list = []
     for cam, camera in cameras.items():
