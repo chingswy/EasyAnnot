@@ -5,7 +5,6 @@ from flask import Flask, render_template, request, jsonify, send_from_directory,
 template_folder = os.path.join(os.path.dirname(__file__), '..', 'templates')
 static_folder = os.path.join(os.path.dirname(__file__), '..', 'static')
 
-
 app = Flask(__name__, 
             template_folder=template_folder, static_folder=static_folder)
 
