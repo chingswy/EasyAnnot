@@ -28,6 +28,9 @@ def main_entrypoint():
         app.config['IMAGE_ROOT'] = image_root
         app.config['ANNOT_ROOT'] = annot_root
         app.run(debug=args.debug, port=args.port, host='0.0.0.0')
+    elif args.mode == 'keypoints3d':
+        from .keypoints_viewer import app
+        app.run(debug=args.debug, port=args.port, host='0.0.0.0')
     else:
         raise NotImplementedError
 
