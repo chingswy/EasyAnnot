@@ -2,8 +2,42 @@
 
 ## Install
 
+TODO: update to pip
+
 ```bash
 pip install easyannot
+```
+
+## Usage
+
+Visualize all data of a EasyMoCap log
+
+```bash
+easyannot easymocap ./
+```
+
+Contains:
+
+- Images
+- Annots
+    - plot bbox, keypoints onto images
+- Match log
+    - distance
+    - matching steps:
+- Recon log
+    - 3D keyypoints in each frame
+
+### Format
+
+1. Matching log
+
+```python
+[
+    {
+        'indices': [], # len = views, -1 if invalid
+        'proposals': [(view, id, conf), ...],  
+    }
+]
 ```
 
 ## Vis Cameras

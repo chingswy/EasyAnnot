@@ -24,7 +24,7 @@
         <div class="col-md-3">
             <div class="card mb-4 shadow-sm">
                 <!-- Remove width and height attributes to maintain original aspect ratio -->
-                <img sub="{{ folder }}" src="{{ url_for('send_image', folder_name=folder, filename=image) }}"
+                <img sub="{{ folder }}" src="{{ url_for('send_i_image', folder_name=folder, index=0) }}"
                     class="bd-placeholder-img card-img-top image-card">
                 <div class="card-body">
                     <p class="card-text">{{ folder }}</p>

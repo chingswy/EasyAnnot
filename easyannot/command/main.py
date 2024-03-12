@@ -2,6 +2,12 @@ import os
 help_text = ''' EasyAnnot is a simple tool for annotating data.
 '''
 
+def check_path(root, annot):
+    if os.path.isabs(annot):
+        return annot
+    else:
+        return os.path.abspath(os.path.join(root, annot))
+
 def main_entrypoint():
     import argparse
     parser = argparse.ArgumentParser(usage=help_text)
@@ -19,17 +25,28 @@ def main_entrypoint():
         app.run(debug=args.debug, port=args.port, host='0.0.0.0')
     elif args.mode == 'images':
         from .image_viewer import app
-        app.config['ROOT'] = os.path.abspath(args.root)
+        app.config['ROOT'] = os.path.join(os.path.abspath(args.root), args.images)
         app.run(debug=args.debug, port=args.port, host='0.0.0.0')
     elif args.mode == 'annots':
         from .annot_viewer import app
-        image_root = os.path.join(os.path.abspath(args.root), args.images)
-        annot_root = os.path.abspath(args.annots)
+        image_root = check_path(args.root, args.images)
+        annot_root = os.path.join(check_path(args.root, args.annots), args.images)
         app.config['IMAGE_ROOT'] = image_root
         app.config['ANNOT_ROOT'] = annot_root
+        print(f'Image root: {image_root}, Annot root: {annot_root}')
         app.run(debug=args.debug, port=args.port, host='0.0.0.0')
     elif args.mode == 'keypoints3d':
         from .keypoints_viewer import app
+        app.run(debug=args.debug, port=args.port, host='0.0.0.0')
+    elif args.mode == 'all':
+        image_root = check_path(args.root, args.images)
+        annot_root = os.path.join(check_path(args.root, args.annots), args.images)
+        app.config['IMAGE_ROOT'] = image_root
+    elif args.mode == 'match':
+        from .annotate_match import app
+        image_root = check_path(args.root, args.images)
+        app.config['ROOT'] = os.path.abspath(args.root)
+        app.config['IMAGE_ROOT'] = image_root
         app.run(debug=args.debug, port=args.port, host='0.0.0.0')
     else:
         raise NotImplementedError
