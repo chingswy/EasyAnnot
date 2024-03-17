@@ -297,34 +297,6 @@ def save_annotation():
     print(data)  # 这里仅打印数据，实际应用中你可能需要将其存储在数据库中
     return jsonify(success=True)
 
-if True: # vanish points
-    @app.route('/vanish')
-    def vanish():
-        first_images = get_first_images()
-        return render_template('index_any.html', first_images=first_images, href='annot_vanish')
-
-    @app.route('/annot_vanish/<string:folder_name>')
-    def annot_vanish(folder_name):
-        return render_template('annot_vanish.html', folder_name=folder_name, num_images=len(filenames[folder_name]))
-    
-    @app.route('/submit_vanish/<string:folder_name>', methods=['POST'])
-    def submit_vanish(folder_name):
-        lines = request.json['lines']
-        record = read_yaml(VANISH_NAME)
-        record[folder_name] = lines
-        write_yaml(VANISH_NAME, record)
-        # 处理 lines 数据
-        return jsonify({"status": "success"})
-
-    @app.route('/query_vanish/<string:folder_name>', methods=['GET'])
-    def query_vanish(folder_name):
-        record = read_yaml(VANISH_NAME)
-        print(record)
-        if folder_name not in record or len(record[folder_name].keys()) == 0:
-            record[folder_name] = {'X': [], 'Y': [], 'Z': []}
-        # 处理 lines 数据
-        return jsonify(record[folder_name])    
-
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()

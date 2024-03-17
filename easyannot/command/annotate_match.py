@@ -26,12 +26,6 @@ def index():
 def send_i_image(folder_name, index):
     return send_from_directory(os.path.join(app.config['IMAGE_ROOT'], folder_name), app.config['imgnames'][folder_name][index])
 
-# 标注匹配点的操作
-@app.route('/match_points')
-def match_points():
-    first_images = get_first_images()
-    return render_template('index_match_points.html', first_images=first_images)
-
 @app.route('/query_points', methods=['GET'])
 def query_points():
     points_name = os.path.join(app.config['ROOT'], 'points.json')
@@ -39,7 +33,7 @@ def query_points():
         with open(points_name, 'r') as f:
             points = json.load(f)
     else:
-        points = []
+        points = {sub: [] for sub in app.config['subs']}
     return jsonify(points)
 
 @app.route('/export_points', methods=['POST'])
@@ -57,7 +51,7 @@ def triangulate():
     print(datas)
     import numpy as np
     from easymocap.mytools.camera_utils import read_cameras
-    cameras = read_cameras(app.config['ROOT'])
+    cameras = read_cameras(os.path.join(app.config['ROOT'], app.config['CAMERA']))
     # 阅读匹配点
     # 阅读相机参数
     # 三角化

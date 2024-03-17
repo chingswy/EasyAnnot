@@ -24,7 +24,7 @@
         <!-- 删除按钮 -->
         <button id="deleteLastLine" class="btn btn-warning">Delete Last Line</button>
         <button id="deleteAllLinesInMode" class="btn btn-danger">Delete All Lines</button>
-
+        <button id="calculateFocal" class="btn btn-danger">Focal</button>
     </div>
 
 </div>
@@ -84,6 +84,15 @@
             });
     });
 
+    document.getElementById("calculateFocal").addEventListener("click", function() {
+        fetch("/calculateFocal/{{ folder_name }}")
+            .then(response => response.json()) // 或者 response.json() 如果返回的是JSON
+            .then(data => {
+                console.log(data);
+                // 这里的data是从后端返回的响应，您可以根据需要对其进行处理。
+            })
+            .catch(error => console.error('Error:', error));
+    });
     // 其余的JavaScript代码保持不变
 
     function _update_frame(index) {
@@ -151,7 +160,20 @@
                 ctx.moveTo(line.startX / scaleX, line.startY / scaleY);
                 ctx.lineTo(line.endX / scaleX, line.endY / scaleY);
                 ctx.stroke();
+                // 如果 mode_points 在lines中，那么绘制直线
+                // 从mode_points到line.startX，line.startY
+                // 检查是否存在对应的mode_points
             });
+            const modePointsKey = mode + '_point';
+            if (lines.hasOwnProperty(modePointsKey)) {
+                console.log('Drawing mode points:', lines[modePointsKey]);
+                lines[mode].forEach(line => {
+                    ctx.beginPath();
+                    ctx.moveTo(lines[modePointsKey][0] / scaleX, lines[modePointsKey][1] / scaleY);
+                    ctx.lineTo(line.startX / scaleX, line.startY / scaleY);
+                    ctx.stroke();
+                });
+            }
         }
     }
 
