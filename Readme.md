@@ -5,7 +5,7 @@
 TODO: update to pip
 
 ```bash
-pip install easyannot
+pip install ./
 ```
 
 ## Usage
@@ -51,6 +51,15 @@ easyannot camera ./
 ```bash
 easyannot images ./images
 ```
+
+## 标注匹配点
+
+```bash
+easyannot match ./ --camera output/calibrate/calibrate_final
+```
+
+## 标注vanishing line
+
 
 
 ## Deprecated

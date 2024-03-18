@@ -13,10 +13,13 @@ app = Flask(__name__,
 @app.route('/')
 def index():
     root = app.config['IMAGE_ROOT']
+    print(f'Try to listdir of {root}')
     subs = sorted(os.listdir(root))
+    print(subs)
     app.config['subs'] = subs
     app.config['imgnames'] = {}
     for sub in subs:
+        print(f'- Try to listdir of {sub}')
         filenames = sorted(os.listdir(os.path.join(root, sub)))
         app.config['imgnames'][sub] = filenames
     filename = os.path.join(app.config['ROOT'], 'vanish.yml')

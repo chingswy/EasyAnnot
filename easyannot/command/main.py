@@ -23,6 +23,7 @@ def main_entrypoint():
     if args.mode == 'camera':
         from .camera_viewer import app
         app.config['ROOT'] = os.path.abspath(args.root)
+        app.config['CAMERA_ROOT'] = check_path(args.root, args.camera)
         app.run(debug=args.debug, port=args.port, host='0.0.0.0')
     elif args.mode == 'images':
         from .image_viewer import app

@@ -16,6 +16,7 @@
         <button class="btn btn-primary me-2" onclick="increaseMarker()" id="increaseMarker">+</button>
         <button class="btn btn-primary me-2" id="triangulate">Triangulate</button>
         <button class="btn btn-primary me-2">Update</button>
+        <button class="btn btn-primary me-2" id="clear">Clear</button>
         <button class="btn btn-primary me-2" id="export">Export</button>
     </div>
 
@@ -152,6 +153,12 @@ $(document).ready(function () {
         increaseMarker();
         // 发送标注数据到后端
         // $.post('/api/marks', { markId, x, y, color });
+    });
+
+    // clear 函数
+    $('#clear').click(function () {
+        marks[currentSub].pop();
+        decreaseMarker();
     });
 
     // export 函数
