@@ -28,7 +28,7 @@ def send_i_image(folder_name, index):
 
 @app.route('/query_points', methods=['GET'])
 def query_points():
-    points_name = os.path.join(app.config['ROOT'], 'points.json')
+    points_name = app.config['POINTS_NAME']
     if os.path.exists(points_name):
         with open(points_name, 'r') as f:
             points = json.load(f)
@@ -40,7 +40,7 @@ def query_points():
 def export_points():
     data = request.get_json()
     # 处理数据...
-    points_name = os.path.join(app.config['ROOT'], 'points.json')
+    points_name = app.config['POINTS_NAME']
     with open(points_name, 'w') as f:
         json.dump(data, f, indent=4)
     return jsonify({"status": "success", "message": "Marks data received"})

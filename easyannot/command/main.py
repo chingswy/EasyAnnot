@@ -16,6 +16,7 @@ def main_entrypoint():
     parser.add_argument('--images', type=str, default='images')
     parser.add_argument('--annots', type=str, default='annots')
     parser.add_argument('--camera', type=str, default='')
+    parser.add_argument('--points', type=str, default='points.json')
     parser.add_argument('--port', type=int, default=3456)
     parser.add_argument('--readonly', action='store_true')
     parser.add_argument('--debug', action='store_true')
@@ -50,6 +51,7 @@ def main_entrypoint():
         app.config['ROOT'] = os.path.abspath(args.root)
         app.config['CAMERA'] = args.camera
         app.config['IMAGE_ROOT'] = image_root
+        app.config['POINTS_NAME'] = check_path(args.root, args.points)
         app.run(debug=args.debug, port=args.port, host='0.0.0.0')
     elif args.mode == 'vanish':
         from .annotate_vanish import app
