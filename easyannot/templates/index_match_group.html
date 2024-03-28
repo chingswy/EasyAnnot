@@ -1,0 +1,282 @@
+{% extends 'element/blank.html' %}
+
+{% block style %}
+{% endblock %}
+
+{% block content_block %}
+<div class="container-fluid mt-4">
+    <h1 class="mb-4" id="title">{{ first_images[0][0] }}</h1>
+
+    <div class="justify-content-center">
+        <canvas id="imageCanvas" class="mb-3"></canvas>
+    </div>
+    <div class="text-center mb-3">
+        <!-- group id -->
+        <button class="btn btn-primary me-2" onclick="decreaseGroup()" id="decreaseGroup">-</button>
+        <span id="groupCount" class="badge bg-secondary mx-2">0</span> <!-- 使用徽章样式的计数器 -->
+        <button class="btn btn-primary me-2" onclick="increaseGroup()" id="increaseGroup">+</button>
+        <button class="btn btn-primary me-2" onclick="decreaseMarker()" id="decreaseMarker">-</button>
+        <span id="markerCount" class="badge bg-secondary mx-2">0</span> <!-- 使用徽章样式的计数器 -->
+        <button class="btn btn-primary me-2" onclick="increaseMarker()" id="increaseMarker">+</button>
+        <button class="btn btn-primary me-2" id="triangulate">Triangulate</button>
+        <button class="btn btn-primary me-2">Update</button>
+        <button class="btn btn-primary me-2" id="clear">Clear</button>
+        <button class="btn btn-primary me-2" id="clearRepro">ClearRepro</button>
+        <button class="btn btn-primary me-2" id="export">Export</button>
+    </div>
+
+    <div class="row">
+        {% for folder, image in first_images %}
+        <div class="col-md-3">
+            <div class="card mb-4 shadow-sm">
+                <!-- Remove width and height attributes to maintain original aspect ratio -->
+                <img sub="{{ folder }}" src="{{ url_for('send_i_image', folder_name=folder, index=frame) }}"
+                    class="bd-placeholder-img card-img-top image-card">
+                <div class="card-body">
+                    <p class="card-text">{{ folder }}</p>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='scripts/image_canvas.js') }}"></script>
+<script src="{{ url_for('static', filename='scripts/color_utils.js') }}"></script>
+<script src="{{ url_for('static', filename='scripts/plot_utils.js') }}"></script>
+
+<script>
+
+const canvas = document.getElementById('imageCanvas');
+const ctx = canvas.getContext('2d');
+var images_sub_url = {{ first_images | tojson | safe }};
+console.log(images_sub_url);
+let currentSub = images_sub_url[0][0];
+
+let currentImage = new Image();
+let currentGroupIndex = -1;
+let currentMarkerIndex = 0;
+
+// 初始化 marks 和 marks3d
+let marks = {};
+let marks3d = {};
+
+images_sub_url.forEach(sub_url => {
+    marks[sub_url[0]] = {}; // 对每个 sub_url，初始化其下的分组容器
+});
+
+// 无需为 marks3d 初始化基于 images_sub_url 的结构，直接记录 group
+// marks3d 初始化为一个空字典，后续操作将在这里添加 groupID 对应的点
+marks3d = {};
+
+function fetchMarks() {
+    $.get('/query_points', function(data) {
+        marks = data; // 假设服务器返回的数据是正确格式的
+        console.log('Marks data fetched from server:', marks);
+    })
+    .fail(function(error) {
+        console.error('Error fetching marks from server:', error);
+    });
+}
+fetchMarks();
+
+function increaseGroup() {
+    currentGroupIndex++;
+    currentMarkerIndex = 0; // 重置标记索引
+    $('#markerCount').text(currentMarkerIndex);
+    // 确保新的组在所有子图中都有对应的空字典
+    for (let sub in marks) {
+        if (!(currentGroupIndex in marks[sub])) {
+            marks[sub][currentGroupIndex] = []; // 为新组创建空数组
+        }
+    }
+    if (!(currentGroupIndex in marks3d)) {
+        marks3d[currentGroupIndex] = []; // 在 marks3d 中也为新组创建空数组
+    }
+    $('#groupCount').text(currentGroupIndex);
+    drawMarks();
+}
+
+function decreaseGroup() {
+    if (currentGroupIndex > 0) {
+        currentGroupIndex--;
+    }
+    currentMarkerIndex = 0; // 重置标记索引
+    $('#markerCount').text(currentMarkerIndex);
+    $('#groupCount').text(currentGroupIndex);
+    drawMarks();
+}
+
+increaseGroup();
+
+function increaseMarker() {
+    currentMarkerIndex++;
+    $('#markerCount').text(currentMarkerIndex);
+    drawMarks();
+}
+
+function decreaseMarker() {
+    if (currentMarkerIndex > 0) {
+        currentMarkerIndex--;
+        $('#markerCount').text(currentMarkerIndex);
+        drawMarks();
+    }
+}
+
+document.addEventListener('keydown', function(event) {
+    // 检查按下的键是否为W, A, S, D中的一个
+    if (event.code === 'KeyW' ) {
+        increaseGroup();
+    }
+    if (event.code === 'KeyA') {
+        // 添加适用于按下A键时的逻辑
+        decreaseMarker();
+    }
+    if (event.code === 'KeyS') {
+        // 添加适用于按下A键时的逻辑
+        decreaseGroup();
+    }
+    if (event.code === 'KeyD') {
+        // 添加适用于按下D键时的逻辑
+        increaseMarker();
+    }
+    if (event.code === 'KeyT') {
+        // 添加适用于按下D键时的逻辑
+        $('#triangulate').click();
+    }
+    
+});
+
+
+// 绘制标注点
+function drawMarks() {
+    clearAndPlot(ctx, canvas, currentImage);
+    // 只绘制当前子图（currentSub）和当前组（currentGroupIndex）内的标注点
+    // 绘制当前子图内当前组的所有点
+    if (marks[currentSub] && marks[currentSub][currentGroupIndex]) {
+        marks[currentSub][currentGroupIndex].forEach(mark => {
+            console.log(mark);
+            const pos = image2canvasPosition(canvas, currentImage, mark); // 将图像坐标转换为画布坐标
+            drawCross(ctx, pos.x, pos.y, mark.color); // 绘制交叉点
+            ctx.font = '12px Arial';
+            ctx.fillStyle = 'white';
+            ctx.fillText(mark.id.toString(), pos.x + 6, pos.y); // 标记点的ID
+        });
+    }
+    if (marks3d[currentSub] && marks3d[currentSub][currentGroupIndex]) {
+        marks3d[currentSub][currentGroupIndex].forEach(mark => {
+            console.log(mark);
+            pos = image2canvasPosition(canvas, currentImage, mark);
+            drawCross(ctx, pos.x, pos.y, mark.color)
+            ctx.font = '12px Arial';
+            ctx.fillStyle = 'red';
+            ctx.fillText(mark.id, pos.x + 6, pos.y);
+        });
+    }
+    // // 然后检查匹配的ID并绘制连线
+    // marks[currentSub].forEach(mark1 => {
+    //     marks3d[currentSub].forEach(mark2 => {
+    //         if (mark1.id === mark2.id) {
+    //             // 如果ID匹配，绘制连线
+    //             const pos1 = image2canvasPosition(canvas, currentImage, mark1);
+    //             const pos2 = image2canvasPosition(canvas, currentImage, mark2);
+    //             ctx.beginPath();
+    //             ctx.moveTo(pos1.x, pos1.y);
+    //             ctx.lineTo(pos2.x, pos2.y);
+    //             ctx.strokeStyle = mark1.color; // 或者选择一个合适的颜色
+    //             ctx.stroke();
+    //         }
+    //     });
+    // });
+}
+
+$(document).ready(function () {
+    currentImage.src = $('.image-card').first().attr('src');
+    currentImage.onload = function () {
+        setCanvasSize(canvas, currentImage); // Set canvas size
+        clearAndPlot(ctx, canvas, currentImage);
+        drawMarks();
+    }
+
+    // 图片点击事件
+    $('.card').on('click', '.image-card', function () {
+        const imageUrl = $(this).attr('src');
+        currentSub = $(this).attr('sub');
+        $('#title').text(currentSub);
+        // ID reset to max of this view
+        currentMarkerIndex = 0;
+        marks[currentSub][currentGroupIndex].forEach(mark => {
+            currentMarkerIndex = mark.id + 1;
+        })
+        $('#markerCount').text(currentMarkerIndex);
+        updateImage(currentImage, imageUrl);
+    });
+
+    // Canvas点击事件
+    $('#imageCanvas').click(function (e) {
+        const pos = getMousePosition(canvas, e);
+        const markId = currentMarkerIndex;  // 生成唯一标识
+        const color = randomColors[markId % randomColors.length];
+        var pos_img = getImagePosition(canvas, currentImage, pos);
+        marks[currentSub][currentGroupIndex].push({ id: markId, x: pos_img.x, y: pos_img.y, color: color});
+        increaseMarker();
+        // 发送标注数据到后端
+        // $.post('/api/marks', { markId, x, y, color });
+    });
+
+    // clear 函数
+    $('#clear').click(function () {
+        marks[currentSub][currentGroupIndex].pop();
+        decreaseMarker();
+    });
+
+    $('#clearRepro').click(function () {
+        marks3d = {};
+        decreaseMarker();
+    });
+    
+    // export 函数
+    $('#export').click(function () {
+        // 这里需要将marks resize
+
+        fetch('/export_points', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(marks)
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+        })
+        .catch((error) => {
+            console.error('Error:', error);
+        });
+        
+    });
+
+    // triangulate 函数
+    $('#triangulate').click(function () {
+        // 这里需要将marks resize
+        fetch('/triangulate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(marks)
+        })
+        .then(response => response.json())
+        .then(data => {
+            marks3d = data;
+            console.log(marks3d);
+            drawMarks();
+        })
+        .catch((error) => {
+            console.error('Error:', error);
+        });
+        
+    });
+  });
+</script>
+{% endblock %}
