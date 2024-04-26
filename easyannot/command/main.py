@@ -51,6 +51,7 @@ def main_entrypoint():
         image_root = check_path(args.root, args.images)
         app.config['ROOT'] = os.path.abspath(args.root)
         app.config['CAMERA'] = args.camera
+        app.config['frame'] = args.frame
         app.config['IMAGE_ROOT'] = image_root
         app.config['POINTS_NAME'] = check_path(args.root, args.points)
         app.run(debug=args.debug, port=args.port, host='0.0.0.0')

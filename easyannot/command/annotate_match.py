@@ -18,7 +18,7 @@ def index():
     app.config['imgnames'] = {}
     for sub in subs:
         filenames = sorted(os.listdir(os.path.join(root, sub)))
-        app.config['imgnames'][sub] = filenames
+        app.config['imgnames'][sub] = [filenames[app.config['frame']]]
     first_images = [(sub, os.path.join(sub, app.config['imgnames'][sub][0])) for sub in subs]
     return render_template('index_match_points.html', first_images=first_images)
 
