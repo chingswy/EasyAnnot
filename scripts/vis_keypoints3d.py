@@ -28,12 +28,13 @@ def read_keypoints_from_json(dirname):
     return keypoints_data
 
 def rotate_keypoints(keypoints, rot):
-    if rot[0] == 'x':
-        R = np.array([[1, 0, 0], [0, np.cos(rot[1]), -np.sin(rot[1])], [0, np.sin(rot[1]), np.cos(rot[1])]])
-    elif rot[0] == 'y':
-        R = np.array([[np.cos(rot[1]), 0, np.sin(rot[1])], [0, 1, 0], [-np.sin(rot[1]), 0, np.cos(rot[1])]])
+    axis, angle = rot[0], np.deg2rad(rot[1])
+    if axis == 'x':
+        R = np.array([[1, 0, 0], [0, np.cos(angle), -np.sin(angle)], [0, np.sin(angle), np.cos(angle)]])
+    elif axis == 'y':
+        R = np.array([[np.cos(angle), 0, np.sin(angle)], [0, 1, 0], [-np.sin(angle), 0, np.cos(angle)]])
     else:
-        raise ValueError('Invalid rotation axis: {}'.format(rot[0]))
+        raise ValueError('Invalid rotation axis: {}'.format(axis))
     return keypoints @ R.T
 
 if __name__ == '__main__':
