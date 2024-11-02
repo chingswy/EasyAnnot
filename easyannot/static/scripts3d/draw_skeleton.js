@@ -89,12 +89,12 @@ function visualizeAllSkeleton(infos, scene, radius_joint=0.02, radius_limb=0.03)
 
     infos.forEach(info => {
         const keypoints = info.keypoints3d;
-        const pid = info.id;
+        const edges = info.edges;
         const sphereGeometry = new THREE.SphereGeometry(radius_joint, 32, 32); // 半径为 0.5 的球体
         const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
         keypoints.forEach(point => {
             const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-            if(point[3] < 0.1){
+            if(point.length > 3 && point[3] < 0.1){
                 return;
             }
             sphere.position.set(point[0], point[1], point[2]);
@@ -106,7 +106,10 @@ function visualizeAllSkeleton(infos, scene, radius_joint=0.02, radius_limb=0.03)
         const ellipsoidMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
         // 创建四棱锥表示边
         edges.forEach(edge => {
-            if (keypoints[edge[0]][3] < 0.1 || keypoints[edge[1]][3] < 0.1){
+            if (edge[0] >= keypoints.length || edge[1] >= keypoints.length){
+                return;
+            }
+            if (keypoints[edge[0]].length > 3 && keypoints[edge[0]][3] < 0.1 || keypoints[edge[1]].length > 3 && keypoints[edge[1]][3] < 0.1){
                 return;
             }
             const start = keypoints[edge[0]];
