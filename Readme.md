@@ -1,5 +1,24 @@
 # EasyAnnot
 
+
+## 简单的脚本调用
+
+1. 可视化3D骨架序列：
+
+```bash
+python scripts/vis_keypoints3d.py --root ${root} --scale 1. --port 2345
+```
+默认单位是米，如果输入数据是厘米，那么需要设置`--scale 0.01`。
+
+2. 可视化SMPL序列：
+
+```bash
+python scripts/vis_smpl.py --root ${root} --port 2345
+```
+
+
+
+
 ## Install
 
 TODO: update to pip

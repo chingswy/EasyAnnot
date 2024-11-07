@@ -42,6 +42,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--root', type=str)
     parser.add_argument('--port', type=int, default=5000)
+    parser.add_argument('--scale', type=float, default=1.0)
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
@@ -78,6 +79,11 @@ if __name__ == '__main__':
             # rotate keypoints
             keypoints = rotate_keypoints(keypoints, rot)
             keypoints = keypoints.tolist()
+            keypoints_data = [[{'id': 0, 'keypoints3d': keypoints[i], 'edges': edges}] for i in range(len(keypoints))]
+        elif root.endswith('.npz'):
+            data = np.load(root)
+            keypoints = (data['joints'] * args.scale).tolist()
+            edges = data['body_conn'].tolist()
             keypoints_data = [[{'id': 0, 'keypoints3d': keypoints[i], 'edges': edges}] for i in range(len(keypoints))]
     else:
         # keypoints: (seqlen, 22, 3)

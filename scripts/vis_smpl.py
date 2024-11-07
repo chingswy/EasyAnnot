@@ -3,7 +3,11 @@ from os.path import join
 from flask import Flask, render_template, jsonify
 import json
 
-app = Flask(__name__, template_folder='templates', static_folder='static')
+template_folder = os.path.join(os.path.dirname(__file__), '..', 'easyannot', 'templates')
+static_folder = os.path.join(os.path.dirname(__file__), '..', 'easyannot', 'static')
+
+app = Flask(__name__, 
+            template_folder=template_folder, static_folder=static_folder)
 
 @app.route('/')
 def vis_keypoints3d():
@@ -11,11 +15,7 @@ def vis_keypoints3d():
 
 @app.route('/query_smpl')
 def query_smpl():
-    keypoints_data = []
-    for filename in filenames:
-        with open(join(root, filename), 'r') as f:
-            keypoints_data.append(json.load(f))
-    return jsonify(keypoints_data)
+    return jsonify(smpl_data)
 
 if __name__ == '__main__':
     import argparse
@@ -26,8 +26,32 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     root = args.root
-    assert os.path.isdir(root), root
-    filenames = sorted(os.listdir(root))
-    print('Found {} files in {}'.format(len(filenames), root))
+    smpl_data = []
+    if os.path.isfile(root):
+        if root.endswith('.pth'):
+            import torch
+            data = torch.load(root)
+            data = {
+                key: val.tolist() for key, val in data.items()
+            }
+            smpl_data = [[
+                {
+                    'id': 0,
+                    'Rh': data['Rh'][i:i+1],
+                    'Th': data['Th'][i:i+1],
+                    'poses': data['poses'][i:i+1],
+                    'shapes': data['shapes'][i:i+1]
+                }
+            ] for i in range(len(data['Rh']))
+            ]
+            print(f'Found {len(smpl_data)} frames in {root}')
+
+        elif root.endswith('.pkl'):
+            import ipdb; ipdb.set_trace()
+    elif os.path.isdir(root):
+        filenames = sorted(os.listdir(root))
+        print('Found {} files in {}'.format(len(filenames), root))
+    else:
+        raise ValueError(f'Invalid root: {root}')
 
     app.run(host='0.0.0.0', port=args.port, debug=args.debug)
