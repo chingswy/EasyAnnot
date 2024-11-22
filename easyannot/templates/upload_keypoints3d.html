@@ -1,0 +1,187 @@
+{% extends 'element/blank.html' %}
+
+{% block content_block %}
+
+<div class="container mt-3">
+    <div id="audioWarning" style="color: red; text-align: center; display: none;">
+        请确保您的浏览器未静音，并允许音频播放。
+    </div>
+    <!-- 添加播放按钮 -->
+    <div class="d-flex justify-content-center" id="vis3d"></div>
+    <progress id="animationProgress" value="0" max="1" style="width: 100%;"></progress>
+    <canvas id="audioVisualizer" width="600" height="100" style="width: 100%;"></canvas>
+</div>
+
+<!-- 弹窗 -->
+<div id="playModal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); border: none; z-index: 1000; max-width: 90%; width: 400px;">
+    <p style="font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 20px;">加载完成，点击开始播放</p>
+    <div id="animationInfo" style="margin-bottom: 20px;"></div>
+    <button id="startPlaybackButton" style="display: block; width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer;">开始播放</button>
+</div>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "../../static/three/three.module.js",
+            "three/addons/": "../../static/three/jsm/"
+        }
+    }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { BVHLoader } from 'three/addons/loaders/BVHLoader.js';
+
+import { getChessboard, getCoordinate } from '/static/scripts3d/create_ground.js';
+import { create_scene } from '/static/scripts3d/create_scene.js';
+import { visualizeSkeleton, visualizeAllSkeleton } from '/static/scripts3d/draw_skeleton.js';
+
+let scene, camera, renderer;
+const clock = new THREE.Clock();
+let mixer;
+let controls;
+let infos;
+let currentFrame = 0;
+let total_frame = 0;
+const intervalTime = 30.; // 每帧之间的时间间隔，单位毫秒
+
+// 新增音频对象
+// const audio = new Audio('static/data/yy01_i1_t1_000.wav');
+console.log("Load {{ audio_name }}");
+console.log("Load {{ mocap_bvh_name }}");
+
+const audio = new Audio("{{ audio_name }}");
+audio.loop = false; // 设置音频循环播放
+
+// 获取进度条和音频可视化的 canvas
+const progressBar = document.getElementById('animationProgress');
+const audioCanvas = document.getElementById('audioVisualizer');
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const analyser = audioCtx.createAnalyser();
+const audioSource = audioCtx.createMediaElementSource(audio);
+audioSource.connect(analyser);
+analyser.connect(audioCtx.destination);
+// 用于存储音量数据的缓冲区
+const volumeBuffer = new Array(100).fill(0); // 10秒的缓冲区，假设每秒更新10次
+let bufferIndex = 0;
+
+init();
+const loader = new BVHLoader();
+let action;
+loader.load( '{{ mocap_bvh_name }}', function ( result ) {
+
+    const skeletonHelper = new THREE.SkeletonHelper( result.skeleton.bones[ 0 ] );
+
+    scene.add( result.skeleton.bones[ 0 ] );
+    scene.add( skeletonHelper );
+
+    // play animation
+    mixer = new THREE.AnimationMixer( result.skeleton.bones[ 0 ] );
+    action = mixer.clipAction(result.clip);
+
+    // 显示弹窗
+    // 获取动画信息
+    const totalFrames = result.clip.tracks[0].times.length;
+    const frameRate = 1 / (result.clip.tracks[0].times[1] - result.clip.tracks[0].times[0]);
+    const durationInSeconds = result.clip.duration;
+    
+    // 获取音频时长
+    const audioDuration = audio.duration;
+    
+    // 更新弹窗内容
+    document.getElementById('animationInfo').innerHTML = `
+        <p>动画总帧数: ${totalFrames} 帧</p>
+        <p>动画帧率: ${frameRate.toFixed(2)} fps</p>
+        <p>动画时长: ${durationInSeconds.toFixed(2)} 秒</p>
+        <p>音频时长: ${audioDuration.toFixed(2)} 秒</p>
+    `;
+    document.getElementById('playModal').style.display = 'block';
+} );
+
+// 添加事件监听器
+document.getElementById('startPlaybackButton').addEventListener('click', function() {
+    action.play();
+    audio.play();
+    document.getElementById('playModal').style.display = 'none'; // 隐藏弹窗
+
+    // 监听动画循环事件
+    mixer.addEventListener('loop', function() {
+        audio.currentTime = 0; // 重置音频播放时间
+        audio.play(); // 重新播放音频
+    });
+});
+
+function init() {
+
+    camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 1, 1000 );
+    camera.position.set( 0, 200, 300 );
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color( 0xeeeeee );
+
+    scene.add( new THREE.GridHelper( 400, 10 ) );
+
+    // renderer
+    renderer = new THREE.WebGLRenderer( { antialias: true } );
+    renderer.setPixelRatio( window.devicePixelRatio );
+    renderer.setSize( window.innerWidth, window.innerHeight );
+    renderer.setAnimationLoop( animate );
+    // add to DOM
+    var container = document.getElementById('vis3d');
+    container.appendChild( renderer.domElement );
+
+    controls = new OrbitControls( camera, renderer.domElement );
+    controls.minDistance = 300;
+    controls.maxDistance = 700;
+}
+
+
+function animate() {
+
+const delta = clock.getDelta();
+
+if (mixer) {
+    mixer.update(delta);
+
+    // 更新进度条
+    const action = mixer.existingAction(mixer._actions[0]._clip);
+    progressBar.value = action.time / action.getClip().duration;
+}
+
+// 音频可视化
+visualizeAudio();
+
+renderer.render(scene, camera);
+}
+
+
+function visualizeAudio() {
+    const canvasCtx = audioCanvas.getContext('2d');
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    analyser.getByteFrequencyData(dataArray);
+
+    canvasCtx.clearRect(0, 0, audioCanvas.width, audioCanvas.height); // 清除画布
+    canvasCtx.fillStyle = 'rgb(200, 200, 200)';
+    canvasCtx.fillRect(0, 0, audioCanvas.width, audioCanvas.height);
+
+    const barWidth = (audioCanvas.width / bufferLength) * 2.5;
+    let barHeight;
+    let x = 0;
+
+    for (let i = 0; i < bufferLength; i++) {
+        barHeight = dataArray[i];
+
+        canvasCtx.fillStyle = 'rgb(' + (barHeight + 100) + ',50,50)';
+        canvasCtx.fillRect(x, audioCanvas.height - barHeight / 2, barWidth, barHeight / 2);
+
+        x += barWidth + 1;
+    }
+}
+
+</script>
+
+{% endblock %}

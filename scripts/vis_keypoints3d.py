@@ -82,7 +82,9 @@ if __name__ == '__main__':
             keypoints_data = [[{'id': 0, 'keypoints3d': keypoints[i], 'edges': edges}] for i in range(len(keypoints))]
         elif root.endswith('.npz'):
             data = np.load(root)
+            # joints: (seqlen, num_joints, 3)
             keypoints = (data['joints'] * args.scale).tolist()
+            # body_conn: (num_edges, 2)
             edges = data['body_conn'].tolist()
             keypoints_data = [[{'id': 0, 'keypoints3d': keypoints[i], 'edges': edges}] for i in range(len(keypoints))]
     else:
