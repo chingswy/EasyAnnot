@@ -24,12 +24,12 @@ def read_json_label(label_path):
     with open(label_path, 'r') as f:
         return json.load(f)
 
-@app.route('/')
-def list_mocap_files():
+@app.route('/list_mocap_files/<day>')
+def list_mocap_files(day):
     root_path = args.root
-    mocap_folder = os.path.join(root_path, 'MoCap_bvh')
-    label_folder = os.path.join(root_path, 'labeling')
-    audio_folder = os.path.join(root_path, 'audio')
+    mocap_folder = os.path.join(root_path, day, 'MoCap_bvh')
+    label_folder = os.path.join(root_path, day, 'label')
+    audio_folder = os.path.join(root_path, day, 'audio')
 
     audio_files = sorted([f for f in os.listdir(audio_folder) if f.endswith('.wav')])
     for audio_file in audio_files:
@@ -37,11 +37,11 @@ def list_mocap_files():
         bvh_file = glob.glob(os.path.join(mocap_folder, f'{audio_file.split(".")[0]}*.bvh'))
         # try to find the label
         if len(bvh_file) == 0:
-            print(f'{audio_file} has no bvh file')
+            print(f'{audio_file} in {mocap_folder} has no bvh file')
             continue
         label_file = glob.glob(os.path.join(label_folder, f'{audio_file.split(".")[0]}*.json'))
         if len(label_file) == 0:
-            print(f'{audio_file} has no label file')
+            print(f'{audio_file} in {label_folder} has no label file')
             continue
         audio_file = os.path.join(audio_folder, audio_file)
         audio_file = '/static/' + os.path.relpath(audio_file, static_folder)
@@ -58,28 +58,19 @@ def list_mocap_files():
         file['index'] = i
     return render_template('list_mocap_files.html', files=files_info)
 
+@app.route('/')
+def list_days():
+    root_path = args.root
+    # Get all subdirectories in root path
+    days = [d for d in os.listdir(root_path) if os.path.isdir(os.path.join(root_path, d))]
+    # Sort the directories
+    days.sort()
+    return render_template('index_any_folder.html', href='list_mocap_files', days=days)
+
 def format_label(label):
-    all_records = []
-    for key, val in label.items():
-        if key == 't_pose' or key == 'last':
-            for (start, end) in val:
-                all_records.append({
-                    'start': start,
-                    'end': end,
-                    'label': key,
-                    'action': key
-                })
-        elif '_yy_' in key:
-            action, tag = key.split('_yy_')
-            for (start, end) in val:
-                all_records.append({
-                    'start': start,
-                    'end': end,
-                    'label': tag,
-                    'action': action
-                })
-    all_records.sort(key=lambda x: x['start'])
-    return all_records
+    # [{'start_pose': 't_pose', 'end_pose': 't_pose', 'semantic_label': '', 'start_time': 0, 'end_time': 2.81906}, {'start_pose': 'i2', 'end_pose': 'i2', 'semantic_label': '', 'start_time': 2.819, 'end_time': 94.34608}, {'start_pose': 'last', 'end_pose': 'last', 'semantic_label': '', 'start_time': 94.346, 'end_time': 94.533}]
+    label.sort(key=lambda x: x['start_time'])
+    return label
 
 @app.route('/visualize/<int:index>')
 def visualize(index):

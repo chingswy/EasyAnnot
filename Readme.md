@@ -16,7 +16,13 @@ python scripts/vis_keypoints3d.py --root ${root} --scale 1. --port 2345
 python scripts/vis_smpl.py --root ${root} --port 2345
 ```
 
+3. 可视化BVH序列
 
+将数据软链接到 `easyannot/static/data/a2gdata`下，然后运行
+
+```bash
+python scripts/show_bvh_database.py --root easyannot/static/data/a2gdata
+```
 
 
 ## Install

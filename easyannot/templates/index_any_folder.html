@@ -1,0 +1,26 @@
+<!-- gallery for any sub functions -->
+{% extends 'element/blank.html' %}
+
+
+{% block content_block %}
+    <div class="container mt-4">
+        <div class="row">
+            {% for day in days %}
+            <div class="col-md-4">
+                <div class="card mb-4 shadow-sm">
+                  <a href="{{ href }}/{{ day }}">
+                    <!-- Remove width and height attributes to maintain original aspect ratio -->
+                    <!-- 使用文字显示 -->
+                  </a>
+                  <div class="card-body">
+                    <a href="{{ href }}/{{ day }}">
+                      <!-- Remove width and height attributes to maintain original aspect ratio -->
+                      <p class="card-text">{{ day }}</p>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+        </div>
+    </div>
+{% endblock %}

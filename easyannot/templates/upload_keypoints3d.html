@@ -41,6 +41,7 @@
     import { getChessboard, getCoordinate } from '/static/scripts3d/create_ground.js';
     import { create_scene } from '/static/scripts3d/create_scene.js';
     import { visualizeSkeleton, visualizeAllSkeleton } from '/static/scripts3d/draw_skeleton.js';
+    // import { WaveSurfer } from '/static/wavesurfer.min.js'
 
     let scene, camera, renderer;
     const clock = new THREE.Clock();
@@ -57,6 +58,26 @@
     console.log("Load {{ mocap_bvh_name }}");
 
     const audio = new Audio("{{ audio_name }}");
+    // 等待音频加载完成
+    audio.addEventListener('loadeddata', () => {
+        console.log("Audio loaded successfully");
+    });
+    // const wavesurfer = WaveSurfer.create({
+    //   container: '#waveform',      // 波形容器
+    //   waveColor: '#a4d3ee',        // 波形颜色
+    //   progressColor: '#007ACC',    // 进度条颜色
+    //   height: 150,                 // 波形图的高度
+    //   responsive: true             // 使波形图响应窗口大小变化
+    // });
+
+    // // 加载音频文件
+    // wavesurfer.load('{{ audio_name }}');
+
+    // // 当音频加载完成后，自动播放
+    // wavesurfer.on('ready', () => {
+    //   wavesurfer.play();
+    // });
+
     audio.loop = false; // 设置音频循环播放
 
     // 获取进度条和音频可视化的 canvas
@@ -68,6 +89,12 @@
     audioSource.connect(analyser);
     analyser.connect(audioCtx.destination);
     const labels = {{ labels|tojson }};
+
+    // labels:  [{'start_pose': 't_pose', 'end_pose': 't_pose', 'semantic_label': '', 'start_time': 0, 'end_time': 2.81906}, {'start_pose': 'i2', 'end_pose': 'i2', 'semantic_label': '', 'start_time': 2.819, 'end_time': 94.34608}, {'start_pose': 'last', 'end_pose': 'last', 'semantic_label': '', 'start_time': 94.346, 'end_time': 94.533}]
+    // Create color map for different semantic labels
+    // Get total duration from the last label's end time
+    const totalDuration = labels[labels.length - 1].end_time;
+
     // 用于存储音量数据的缓冲区
     const volumeBuffer = new Array(100).fill(0); // 10秒的缓冲区，假设每秒更新10次
     let bufferIndex = 0;
@@ -78,6 +105,8 @@
     loader.load('{{ mocap_bvh_name }}', function (result) {
 
         const skeletonHelper = new THREE.SkeletonHelper(result.skeleton.bones[0]);
+        // Adjust the line width of the skeleton
+        skeletonHelper.material.linewidth = 10; // Set the desired line width
 
         scene.add(result.skeleton.bones[0]);
         scene.add(skeletonHelper);
@@ -113,6 +142,8 @@
 
         // 监听动画循环事件
         mixer.addEventListener('loop', function () {
+            // 弹窗显示播放完成
+            document.getElementById('playModal').style.display = 'block';
             audio.currentTime = 0; // 重置音频播放时间
             audio.play(); // 重新播放音频
         });
@@ -158,8 +189,8 @@
             const currentTime = action.time;
             let labelFound = false;
             for (const label of labels) {
-                if (currentTime >= label.start && currentTime <= label.end) {
-                    document.getElementById('labelDisplay').innerText = label.label;
+                if (currentTime >= label.start_time && currentTime <= label.end_time) {
+                    document.getElementById('labelDisplay').innerText = label.semantic_label;
                     document.getElementById('vis3d').style.border = '2px solid red';
                     labelFound = true;
                     break;
