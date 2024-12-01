@@ -34,10 +34,12 @@
 </head>
 <body>
     <h1>Mocap 文件列表</h1>
+    <h2>{{ day }}</h2>
     <ul>
         {% for file in files %}
             <li>
-                <a href="{{ url_for('visualize', index=file.index) }}">
+                <a href="{{ url_for('visualize', day=day, index=file.index) }}">
+                    <span style="display: inline-block; width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #007BFF; color: white; border-radius: 50%; margin-right: 10px;">{{ file.index + 1 }}</span>
                     {{ file.mocap }} + {{ file.audio }}
                 </a>
             </li>

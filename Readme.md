@@ -21,7 +21,7 @@ python scripts/vis_smpl.py --root ${root} --port 2345
 将数据软链接到 `easyannot/static/data/a2gdata`下，然后运行
 
 ```bash
-python scripts/show_bvh_database.py --root easyannot/static/data/a2gdata
+python3 scripts/show_bvh_database.py --root easyannot/static/data/a2gdata --port 2357 --debug
 ```
 
 

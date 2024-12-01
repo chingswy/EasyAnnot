@@ -105,8 +105,11 @@
     loader.load('{{ mocap_bvh_name }}', function (result) {
 
         const skeletonHelper = new THREE.SkeletonHelper(result.skeleton.bones[0]);
-        // Adjust the line width of the skeleton
-        skeletonHelper.material.linewidth = 10; // Set the desired line width
+        // 调整骨骼线条的粗细和材质
+        skeletonHelper.material.linewidth = 50; // 增加线宽
+        skeletonHelper.material.opacity = 0.8; // 调整透明度
+        skeletonHelper.material.transparent = true;
+        skeletonHelper.material.depthTest = false; // 禁用深度测试以确保线条始终可见
 
         scene.add(result.skeleton.bones[0]);
         scene.add(skeletonHelper);
