@@ -37,6 +37,16 @@
             <button id="playPauseButton" class="btn btn-primary">
                 <i class="fas fa-play"></i> 播放
             </button>
+            {% if prev_url %}
+            <a href="{{ prev_url }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> 前一页
+            </a>
+            {% endif %}
+            {% if next_url %}
+            <a href="{{ next_url }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-right"></i> 后一页
+            </a>
+            {% endif %}
             <button class="btn btn-primary" onclick="document.getElementById('video-file-input').click()">打开视频文件</button>
             <button class="btn btn-success" onclick="saveAnnotations()">保存标注文件</button>
             <button class="btn btn-warning" onclick="exportAnnotations()">导出标注文件</button>

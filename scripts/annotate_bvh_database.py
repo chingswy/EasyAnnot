@@ -209,32 +209,33 @@ def _find_main_clips(angles_body, audio_energy, positions_body,
     clips_main_clip = clips_from_flags(flag_main_clip)
     labels = []
     motion_fps = 120
+    min_window_size = 120
     for (start, end) in clips_main_clip:
-        if end - start < 120:
+        if end - start < min_window_size:
             continue
         # 起始帧的速度 < 阈值
         # 找一个最近的start，使得vel[start] < 0.1，同时往左右两边扩展
         for offset in range(0, end - start):
-            if vel[start + offset] < 0.1 and not flag_is_tpose[start + offset]:
+            if vel[start + offset] < 0.1 and not flag_is_tpose[start + offset] and flag_no_audio[start + offset]:
                 start = start + offset
                 break
-            elif start - offset >= 0 and vel[start - offset] < 0.1 and not flag_is_tpose[start - offset]:
+            elif start - offset >= 0 and vel[start - offset] < 0.1 and not flag_is_tpose[start - offset] and flag_no_audio[start - offset]:
                 start = start - offset
                 break
         else:
             start = end
             continue
         for offset in range(0, end - start):
-            if vel[end - offset] < 0.1:
+            if vel[end - offset] < 0.1 and not flag_is_tpose[end - offset] and flag_no_audio[end - offset]:
                 end = end - offset
                 break
-            elif end + offset < vel.shape[0] and vel[end + offset] < 0.1:
+            elif end + offset < vel.shape[0] and vel[end + offset] < 0.1 and not flag_is_tpose[end + offset] and flag_no_audio[end + offset]:
                 end = end + offset
                 break
         else:
             end = start
             continue
-        if end - start < 120:
+        if end - start < min_window_size:
             continue
         labels.append({
             'category': 'main',
@@ -291,7 +292,14 @@ def visualize(day, index):
     mocap_bvh_name = urllib.parse.unquote(files_info[day][index]['mocap_path'])
     print(f'mocap_bvh_name: {mocap_bvh_name}')
     audio_name = urllib.parse.unquote(files_info[day][index]['audio_path'])
-    return render_template('annot_bvh.html', day=day, mocap_bvh_name=mocap_bvh_name, audio_name=audio_name)
+    prev_index = index - 1 if index > 0 else None
+    next_index = index + 1 if index < len(files_info[day]) - 1 else None
+
+    prev_url = url_for('visualize', day=day, index=prev_index) if prev_index is not None else None
+    next_url = url_for('visualize', day=day, index=next_index) if next_index is not None else None
+
+    return render_template('annot_bvh.html', day=day, mocap_bvh_name=mocap_bvh_name, audio_name=audio_name,
+                           prev_url=prev_url, next_url=next_url)
 
 
 if __name__ == '__main__':
