@@ -1,0 +1,657 @@
+{% extends 'element/blank.html' %}
+
+{% block content_block %}
+
+<div class="container-fluid d-flex" style="height: 100vh;">
+    <div id="left-area" class="d-flex flex-column" style="flex: 1; overflow: auto;">
+        <div id="audioWarning" style="color: red; text-align: center; display: none;">
+            请确保您的浏览器未静音，并允许音频播放。
+        </div>
+
+        <div class="progress" id="video-progress">
+            <div id="video-progress-bar" class="progress-bar d-flex justify-content-center" role="progressbar"
+                style="width: 25%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"> </div>
+        </div>
+
+        <div class="d-flex justify-content-center align-items-center mt-2">
+            <div id="video-timestamp" style="color: black; font-size: 12px;">0.00</div>
+        </div>
+
+        <div class="d-flex justify-content-center" id="vis3d"></div>
+
+    </div>
+    <div class="draggable-divider" id="divider" style="width: 5px; background-color: #ccc; cursor: ew-resize;"></div>
+    <div id="right-area" style="flex: 1; overflow: auto;">
+        <!-- Add any additional content or controls here -->
+        <div style="text-align: center; margin-top: 10px;">
+            <h5>Audio Energy</h5>
+            <canvas id="canvas_audio" width="100%" height="10" style="width: 100%; border: 1px solid #ccc; border-radius: 4px; margin: 10px 0; padding: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></canvas>
+        </div>
+        <div style="text-align: center; margin-top: 10px;">
+            <h5>Motion Capture Velocity</h5>
+            <canvas id="canvas_mocap" width="100%" height="10" style="width: 100%; border: 1px solid #ccc; border-radius: 4px; margin: 10px 0; padding: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></canvas>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <input type="file" id="video-file-input" accept="video/*" style="display: none;" onchange="loadVideoFile(event)">
+            <button id="playPauseButton" class="btn btn-primary">
+                <i class="fas fa-play"></i> 播放
+            </button>
+            <button class="btn btn-primary" onclick="document.getElementById('video-file-input').click()">打开视频文件</button>
+            <button class="btn btn-success" onclick="saveAnnotations()">保存标注文件</button>
+            <button class="btn btn-warning" onclick="exportAnnotations()">导出标注文件</button>
+        </div>
+        <div id="segments">
+            <!-- Template for segment visualization -->
+            <div class="segment-container" style="margin: 5px 0;">
+                <div class="d-flex align-items-center">
+                    <span class="segment-label" style="min-width: 100px; margin-right: 10px;"></span>
+                    <canvas class="segment-canvas" height="5" style="flex-grow: 1; border: 1px solid #ddd;"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="playModal"
+        style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); border: none; z-index: 1000; max-width: 90%; width: 400px;">
+        <p style="font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 20px;">加载完成，点击开始播放</p>
+        <div id="animationInfo" style="margin-bottom: 20px;"></div>
+        <button id="startPlaybackButton"
+            style="display: block; width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer;">开始播放</button>
+    </div>
+
+</div>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "../../static/three/three.module.js",
+            "three/addons/": "../../static/three/jsm/"
+        }
+    }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { BVHLoader } from 'three/addons/loaders/BVHLoader.js';
+
+    import { getChessboard, getCoordinate } from '/static/scripts3d/create_ground.js';
+    import { create_scene } from '/static/scripts3d/create_scene.js';
+    import { visualizeSkeleton, visualizeAllSkeleton } from '/static/scripts3d/draw_skeleton.js';
+    // import { WaveSurfer } from '/static/wavesurfer.min.js'
+
+    let scene, camera, renderer;
+    const clock = new THREE.Clock();
+    let mixer;
+    let controls;
+    let infos;
+    let currentFrame = 0;
+    let total_frame = 0;
+    const intervalTime = 30.; // 每帧之间的时间间隔，单位毫秒
+
+    // 新增音频对象
+    // const audio = new Audio('static/data/yy01_i1_t1_000.wav');
+    console.log("Load {{ audio_name }}");
+    console.log("Load {{ mocap_bvh_name }}");
+
+    const audio = new Audio("/get_audio_file/{{ day }}/{{ audio_name }}");
+    // 等待音频加载完成
+    audio.addEventListener('loadeddata', () => {
+        console.log("Audio loaded successfully");
+    });
+    
+    audio.loop = false; // 设置音频循环播放
+
+    // 获取进度条和音频可视化的 canvas
+    const progressBar = document.getElementById('video-progress');
+    // labels:  [{'start_pose': 't_pose', 'end_pose': 't_pose', 'semantic_label': '', 'start_time': 0, 'end_time': 2.81906}, {'start_pose': 'i2', 'end_pose': 'i2', 'semantic_label': '', 'start_time': 2.819, 'end_time': 94.34608}, {'start_pose': 'last', 'end_pose': 'last', 'semantic_label': '', 'start_time': 94.346, 'end_time': 94.533}]
+    // Create color map for different semantic labels
+    // Get total duration from the last label's end time
+    // 用于存储音量数据的缓冲区
+    init();
+    const loader = new BVHLoader();
+    let action;
+    console.log("Load {{ mocap_bvh_name }}");
+    // Get canvas context for audio visualization
+    const audioCanvas = document.getElementById('canvas_audio');
+    const mocapCanvas = document.getElementById('canvas_mocap');
+    let audioEnergies = [];
+    let motionVelocity = [];
+    let labels = [];
+
+    // Fetch audio energies from backend
+    fetch(`/get_audio_energy/{{ day }}/{{ audio_name }}`)
+        .then(response => response.json())
+        .then(data => {
+            audioEnergies = data;
+            console.log("get audio energy success: ", audioEnergies.length);
+            // Call initAudioCanvas once during initialization
+            initCanvas(audioCanvas);
+            drawEnergies(audioCanvas, audioEnergies);
+        })
+        .catch(error => console.error('Error fetching audio energies:', error));
+    
+    fetch(`/get_motion_velocity/{{ day }}/{{ mocap_bvh_name }}`)
+        .then(response => response.json())
+        .then(data => {
+            motionVelocity = data;
+            console.log("get motion velocity success: ", motionVelocity.length);
+            initCanvas(mocapCanvas);
+            drawEnergies(mocapCanvas, motionVelocity);
+        })
+        .catch(error => console.error('Error fetching motion velocity:', error));
+
+    fetch(`/get_labels/{{ day }}/{{ audio_name }}/{{ mocap_bvh_name }}`)
+        .then(response => response.json())
+        .then(data => {
+            labels = data;
+            console.log("get labels success: ", labels.length);
+            // 这里需要等待action加载完成
+            const checkActionLoaded = setInterval(() => {
+                if (action) {
+                    clearInterval(checkActionLoaded);
+                    visualizeSegments();
+                }
+            }, 100);
+        })
+        .catch(error => console.error('Error fetching labels:', error));
+
+    // Initialize the canvas once
+    function initCanvas(canvas) {
+        const ctx = canvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+
+        // Set canvas dimensions accounting for device pixel ratio
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+
+        // Scale the canvas context
+        ctx.scale(dpr, dpr);
+    }
+
+    // Add variables to track dragging state
+    let isDragging = false;
+    let currentTimeRatio = 0;
+
+    // Generalized function to draw energies with interactive time indicator
+    function drawEnergies(canvas, energies, time_ratio = 0) {
+        const rect = canvas.getBoundingClientRect();
+        const ctx = canvas.getContext('2d');
+        // Clear canvas
+        ctx.clearRect(0, 0, rect.width, rect.height);
+
+        // Set style
+        ctx.strokeStyle = '#4287f5';
+        ctx.lineWidth = 2;
+
+        // Calculate width between points
+        const pointSpacing = rect.width / (energies.length - 1);
+        const heightScale = rect.height * 0.8; // Leave some margin
+
+        // Start the path
+        ctx.beginPath();
+        ctx.moveTo(0, rect.height - energies[0] * heightScale);
+
+        // Draw line connecting all points
+        for (let i = 1; i < energies.length; i++) {
+            const x = i * pointSpacing;
+            const y = rect.height - energies[i] * heightScale;
+            ctx.lineTo(x, y);
+        }
+        // Render the line
+        ctx.stroke();
+
+        // Draw time indicator line
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(time_ratio * rect.width, 0);
+        ctx.lineTo(time_ratio * rect.width, rect.height);
+        ctx.stroke();
+    }
+
+    // Function to draw labels on the canvas
+    function drawLabels(canvas, labels) {
+        const rect = canvas.getBoundingClientRect();
+        const ctx = canvas.getContext('2d');
+        const heightScale = rect.height; // Leave some margin
+        const frameRate = 120; // 1 second = 120 frames
+
+
+        // Draw each label
+        labels.forEach(label => {
+            const startFrame = label.start_time * frameRate;
+            const endFrame = label.end_time * frameRate;
+            const startX = (startFrame / motionVelocity.length) * rect.width;
+            const endX = (endFrame / motionVelocity.length) * rect.width;
+            const width = endX - startX;
+
+            // Set color based on label type
+            if (!label.color) {
+                // Randomly initialize a color if not present
+                label.color = `rgba(${Math.random() * 255}, ${Math.random() * 255}, ${Math.random() * 255}, 0.3)`;
+            }
+            ctx.fillStyle = label.color;
+
+            // Draw the rectangle
+            ctx.fillRect(startX, 0, width, heightScale);
+
+            // Draw left and right borders
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(startX, 0);
+            ctx.lineTo(startX, rect.height);
+            ctx.moveTo(endX, 0);
+            ctx.lineTo(endX, rect.height);
+            ctx.stroke();
+        });
+    }
+
+    // Function to add dragging functionality to a canvas
+    function addDraggingFunctionality(canvas) {
+        canvas.addEventListener('mousedown', (event) => {
+            isDragging = true;
+            updateTimeFromMouseEvent(event, canvas);
+        });
+
+        canvas.addEventListener('mousemove', (event) => {
+            if (isDragging) {
+                updateTimeFromMouseEvent(event, canvas);
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+    }
+
+    // Update time from mouse event for a specific canvas
+    function updateTimeFromMouseEvent(event, canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        currentTimeRatio = x / rect.width;
+
+        // Update animation, audio, and skeleton time
+        if (mixer && action) {
+            const newTime = currentTimeRatio * action.getClip().duration;
+            action.time = newTime;
+            audio.currentTime = newTime;
+            mixer.setTime(newTime); // Update skeleton's mixer time
+        }
+
+        // Redraw both canvases with the updated time ratio
+        drawEnergies(audioCanvas, audioEnergies, currentTimeRatio);
+        drawEnergies(mocapCanvas, motionVelocity, currentTimeRatio);
+    }
+
+    // Apply dragging functionality to both canvases
+    addDraggingFunctionality(audioCanvas);
+    addDraggingFunctionality(mocapCanvas);
+
+    // 计算骨骼动画的速度
+    function calculateSkeletonVelocities(skeleton, clip) {
+        const totalFrames = clip.tracks[0].times.length;
+        const frameRate = 1 / (clip.tracks[0].times[1] - clip.tracks[0].times[0]);
+        
+        const velocities = [];
+        const positions = [];
+        
+        // 创建临时的mixer和action来采样位置
+        const tempSkeleton = skeleton.clone();
+        const tempMixer = new THREE.AnimationMixer(tempSkeleton);
+        const tempAction = tempMixer.clipAction(clip);
+        tempAction.play();
+
+        // 对每一帧进行采样
+        for(let i = 0; i < totalFrames; i++) {
+            const time = i / frameRate;
+            tempMixer.setTime(time); // 使用setTime来更新动画状态
+            
+            // 获取所有骨骼的世界坐标
+            const framePositions = [];
+            tempSkeleton.bones.forEach(bone => {
+                bone.updateMatrixWorld(true); // 确保矩阵被更新
+                const worldPos = new THREE.Vector3();
+                worldPos.setFromMatrixPosition(bone.matrixWorld);
+                framePositions.push(worldPos);
+            });
+            positions.push(framePositions);
+            
+            // 计算相邻帧之间的速度
+            if(i > 0) {
+                let velocity = 0;
+                let count = 0;
+                for(let j = 0; j < framePositions.length; j++) {
+                    velocity += framePositions[j].distanceTo(positions[i-1][j]);
+                    count += 1;
+                }
+                velocity /= count; // 平均速度
+                velocities.push(velocity);
+            } else {
+                // 第一帧的速度设为0
+                velocities.push(0);
+            }
+        }
+
+        // 归一化速度值到0-1范围
+        const maxVel = Math.max(...velocities);
+        const minVel = Math.min(...velocities);
+        const normalizedVelocities = velocities.map(v => 
+            maxVel === minVel ? 0 : (v - minVel) / (maxVel - minVel)
+        );
+
+        return normalizedVelocities;
+    }
+
+    loader.load('/get_bvh_file/{{ day }}/{{ mocap_bvh_name }}', function (result) {
+
+        const skeletonHelper = new THREE.SkeletonHelper(result.skeleton.bones[0]);
+        // 调整骨骼线条的粗细和材质
+        skeletonHelper.material.linewidth = 50; // 增加线宽
+        skeletonHelper.material.opacity = 0.8; // 调整透明度
+        skeletonHelper.material.transparent = false;
+        skeletonHelper.material.depthTest = false; // 禁用深度测试以确保线条始终可见
+
+        scene.add(result.skeleton.bones[0]);
+        scene.add(skeletonHelper);
+
+        // play animation
+        mixer = new THREE.AnimationMixer(result.skeleton.bones[0]);
+        action = mixer.clipAction(result.clip);
+        action.setLoop(THREE.LoopOnce); // 设置为只播放一次
+        action.clampWhenFinished = true; // 在结束时保持在最后一帧
+
+        // 获取动画信息
+        const totalFrames = result.clip.tracks[0].times.length;
+        const frameRate = 1 / (result.clip.tracks[0].times[1] - result.clip.tracks[0].times[0]);
+        const durationInSeconds = result.clip.duration;
+
+        // 计算并可视化骨骼速度
+        // 创建速度可视化canvas
+        // 使用drawEnergies绘制速度曲线
+        // initCanvas(mocapCanvas);
+        // drawEnergies(mocapCanvas, motionVelocity);
+    
+        // 获取音频时长
+        const audioDuration = audio.duration;
+
+        // 更新弹窗内容
+
+        const checkAudioAndActionLoaded = setInterval(() => {
+            if (audio.readyState >= 3 && action) {
+                clearInterval(checkAudioAndActionLoaded);
+                document.getElementById('animationInfo').innerHTML = `
+                    <p>动画总帧数: ${totalFrames} 帧</p>
+                    <p>动画帧率: ${frameRate.toFixed(2)} fps</p>
+                    <p>动画时长: ${durationInSeconds.toFixed(2)} 秒</p>
+                    <p>音频时长: ${audioDuration.toFixed(2)} 秒</p>
+                `;
+                document.getElementById('playModal').style.display = 'block';
+            }
+        }, 100);
+    });
+
+    // 修改开始播放按钮的事件监听器
+    document.getElementById('startPlaybackButton').addEventListener('click', function () {
+        document.getElementById('playModal').style.display = 'none'; // 隐藏弹窗
+        // 初始化动画
+        if (action) {
+            action.reset(); // 重置动画到最开始
+            action.play(); // 开始动画
+        }
+        audio.currentTime = 0; // 将音频设置到最开始
+        audio.play(); // 开始播放音频
+    });
+
+    // 添加播放/暂停按钮的事件监听器
+    document.getElementById('playPauseButton').addEventListener('click', function() {
+        togglePlayPause();
+    });
+
+    function togglePlayPause() {
+        const button = document.getElementById('playPauseButton');
+        
+        if (audio.paused) {
+            // 如果播放已结束，从头开始播放
+            if (audio.currentTime >= audio.duration) {
+                audio.currentTime = 0;
+                action.time = 0;
+            }
+            action.paused = false;
+            audio.play();
+            button.innerHTML = '<i class="fas fa-pause"></i> 暂停';
+        } else {
+            action.paused = true;
+            audio.pause();
+            button.innerHTML = '<i class="fas fa-play"></i> 播放';
+        }
+    }
+
+    // 监听音频播放结束事件
+    audio.addEventListener('ended', function() {
+        action.paused = true;
+        const button = document.getElementById('playPauseButton');
+        button.innerHTML = '<i class="fas fa-play"></i> 播放';
+    });
+
+    function init() {
+
+        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1000);
+        camera.position.set(0, 200, 300);
+
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xeeeeee);
+
+        scene.add(new THREE.GridHelper(400, 10));
+
+        // renderer
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setAnimationLoop(animate);
+        // add to DOM
+        var container = document.getElementById('vis3d');
+        container.appendChild(renderer.domElement);
+
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.minDistance = 100;
+        controls.maxDistance = 700;
+    }
+
+    function visualizeSegments() {
+        const segmentsContainer = document.getElementById('segments');
+        segmentsContainer.innerHTML = '';
+
+        labels.forEach((label, index) => {
+            // Create main container
+            const segmentDiv = document.createElement('div');
+            segmentDiv.className = 'segment-container';
+            segmentDiv.style.margin = '15px 0';
+            segmentDiv.style.border = '1px solid #ddd';
+            segmentDiv.style.borderRadius = '4px';
+            segmentDiv.style.padding = '10px';
+
+            // First row - Canvas
+            const canvasRow = document.createElement('div');
+            canvasRow.style.width = '100%';
+            canvasRow.style.marginBottom = '10px';
+
+            const canvas = document.createElement('canvas');
+            canvas.className = 'segment-canvas';
+            canvas.height = 20;
+            canvas.style.width = '100%';
+            canvas.style.display = 'block';
+            canvasRow.appendChild(canvas);
+
+            // Second row - Info and controls
+            const infoRow = document.createElement('div');
+            infoRow.className = 'd-flex justify-content-between align-items-center';
+            infoRow.style.gap = '10px';
+
+            // Left side - Labels
+            const labelInfo = document.createElement('div');
+            labelInfo.style.flex = '1';
+            labelInfo.innerHTML = `
+                <div class="d-flex gap-3">
+                    <span class="badge bg-primary">${label.category || 'No Category'}</span>
+                    <span class="badge bg-secondary">${label.label || 'No Label'}</span>
+                    <span class="badge bg-info">${label.title || 'No Title'}</span>
+                </div>
+            `;
+
+            // Right side - Play button
+            const playButton = document.createElement('button');
+            playButton.className = 'btn btn-sm btn-success';
+            playButton.innerHTML = '<i class="fas fa-play"></i> Play Segment';
+            playButton.onclick = () => playSegment(label);
+
+            // Assemble the layout
+            infoRow.appendChild(labelInfo);
+            infoRow.appendChild(playButton);
+
+            segmentDiv.appendChild(canvasRow);
+            segmentDiv.appendChild(infoRow);
+            segmentsContainer.appendChild(segmentDiv);
+
+            // Initialize canvas
+            initSegmentCanvas(canvas, label);
+        });
+    }
+
+    function initSegmentCanvas(canvas, label) {
+        const ctx = canvas.getContext('2d');
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width;
+
+        // Calculate position of segment within canvas
+        const totalDuration = action.getClip().duration;
+        const startX = (label.start_time / totalDuration) * canvas.width;
+        const endX = (label.end_time / totalDuration) * canvas.width;
+
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw background
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw segment
+        ctx.fillStyle = '#4287f5';
+        ctx.fillRect(startX, 0, endX - startX, canvas.height);
+    }
+
+    // Modify animate function to update segment visualizations
+    function animate() {
+        const delta = clock.getDelta();
+
+        if (mixer) {
+            mixer.update(delta);
+            const action = mixer.existingAction(mixer._actions[0]._clip);
+
+            const current_time_ratio = action.time / action.getClip().duration;
+            drawEnergies(audioCanvas, audioEnergies, current_time_ratio);
+            drawEnergies(mocapCanvas, motionVelocity, current_time_ratio);
+            // drawLabels(mocapCanvas, labels);
+
+            // Update segment visualizations
+            // const segmentCanvases = document.querySelectorAll('.segment-canvas');
+            // segmentCanvases.forEach((canvas, index) => {
+            //     const ctx = canvas.getContext('2d');
+            //     const currentX = current_time_ratio * canvas.width;
+                
+            //     // Draw current time indicator
+            //     ctx.strokeStyle = 'red';
+            //     ctx.lineWidth = 2;
+            //     ctx.beginPath();
+            //     ctx.moveTo(currentX, 0);
+            //     ctx.lineTo(currentX, canvas.height);
+            //     ctx.stroke();
+            // });
+
+            // 更新进度条
+            progressBar.value = action.time / action.getClip().duration;
+
+            // 检查当前时间是否在标签范围内
+            const currentTime = action.time;
+        }
+        renderer.render(scene, camera);
+    }
+
+    // Add event listener for spacebar key press
+    document.addEventListener('keydown', function(event) {
+        if (event.code === 'Space') {
+            if (audio.paused) {
+                action.paused = false; // 继续播放动画
+                audio.play(); // 继续播放音频
+            } else {
+                action.paused = true; // 暂停动画
+                audio.pause(); // 暂停音频
+            }
+        }
+    });
+
+    // Add this new function to handle segment playback
+    function playSegment(label) {
+        if (mixer && action) {
+            // Reset any previous playback
+            if (window.segmentPlaybackInterval) {
+                clearInterval(window.segmentPlaybackInterval);
+            }
+
+            // Set initial position
+            action.time = label.start_time;
+            audio.currentTime = label.start_time;
+            
+            // Start playback
+            action.paused = false;
+            audio.play();
+
+            // Monitor playback and loop when reaching end of segment
+            window.segmentPlaybackInterval = setInterval(() => {
+                if (action.time >= label.end_time) {
+                    action.time = label.start_time;
+                    audio.currentTime = label.start_time;
+                }
+            }, 100);
+
+            // Update button state
+            const allPlayButtons = document.querySelectorAll('.segment-container button');
+            allPlayButtons.forEach(btn => {
+                btn.innerHTML = '<i class="fas fa-play"></i> Play Segment';
+                btn.classList.replace('btn-danger', 'btn-success');
+            });
+            
+            const currentButton = event.currentTarget;
+            currentButton.innerHTML = '<i class="fas fa-stop"></i> Stop';
+            currentButton.classList.replace('btn-success', 'btn-danger');
+            
+            // Update button click handler
+            currentButton.onclick = () => stopSegmentPlayback(currentButton);
+        }
+    }
+
+    // Add this function to handle stopping segment playback
+    function stopSegmentPlayback(button) {
+        if (window.segmentPlaybackInterval) {
+            clearInterval(window.segmentPlaybackInterval);
+            action.paused = true;
+            audio.pause();
+        }
+        
+        // Reset button state
+        button.innerHTML = '<i class="fas fa-play"></i> Play Segment';
+        button.classList.replace('btn-danger', 'btn-success');
+        button.onclick = () => playSegment(label);
+    }
+</script>
+
+{% endblock %}
