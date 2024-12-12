@@ -122,32 +122,22 @@
     let motionVelocity = [];
     let labels = [];
 
-    // Fetch audio energies from backend
-    fetch(`/get_audio_energy/{{ day }}/{{ audio_name }}`)
+    fetch(`/get_labels/{{ day }}/{{ audio_name }}/{{ mocap_bvh_name }}`)
         .then(response => response.json())
         .then(data => {
-            audioEnergies = data;
+            // check audio energy
+            audioEnergies = data['audio_energy'];
             console.log("get audio energy success: ", audioEnergies.length);
             // Call initAudioCanvas once during initialization
             initCanvas(audioCanvas);
             drawEnergies(audioCanvas, audioEnergies);
-        })
-        .catch(error => console.error('Error fetching audio energies:', error));
-    
-    fetch(`/get_motion_velocity/{{ day }}/{{ mocap_bvh_name }}`)
-        .then(response => response.json())
-        .then(data => {
-            motionVelocity = data;
+            // check motion velocity
+            motionVelocity = data['motion_velocity'];
             console.log("get motion velocity success: ", motionVelocity.length);
             initCanvas(mocapCanvas);
             drawEnergies(mocapCanvas, motionVelocity);
-        })
-        .catch(error => console.error('Error fetching motion velocity:', error));
-
-    fetch(`/get_labels/{{ day }}/{{ audio_name }}/{{ mocap_bvh_name }}`)
-        .then(response => response.json())
-        .then(data => {
-            labels = data;
+            // check labels
+            labels = data['labels'];
             console.log("get labels success: ", labels.length);
             // 这里需要等待action加载完成
             const checkActionLoaded = setInterval(() => {
@@ -184,7 +174,41 @@
         // Clear canvas
         ctx.clearRect(0, 0, rect.width, rect.height);
 
-        // Set style
+        // First, draw main category labels as background
+        if (labels) {
+            const mainLabels = labels.filter(label => label.category === 'main');
+            mainLabels.forEach(label => {
+                const startX = (label.start_time / action.getClip().duration) * rect.width;
+                const endX = (label.end_time / action.getClip().duration) * rect.width;
+                
+                // 使用淡红色填充
+                ctx.fillStyle = 'rgba(255, 182, 193, 0.3)'; // 淡红色带透明度
+                ctx.fillRect(startX, 0, endX - startX, rect.height);
+                
+                // 添加边界线
+                ctx.strokeStyle = 'rgba(255, 182, 193, 0.8)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(startX, 0);
+                ctx.lineTo(startX, rect.height);
+                ctx.moveTo(endX, 0);
+                ctx.lineTo(endX, rect.height);
+                ctx.stroke();
+            });
+        }
+
+        // Draw y-axis grid lines every 0.1
+        ctx.strokeStyle = '#d3d3d3'; // Light gray color
+        ctx.lineWidth = 1;
+        for (let i = 0.1; i < 1; i += 0.1) {
+            const y = rect.height - i * rect.height;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(rect.width, y);
+            ctx.stroke();
+        }
+
+        // Set style for energy line
         ctx.strokeStyle = '#4287f5';
         ctx.lineWidth = 2;
 
@@ -472,7 +496,10 @@
         segmentsContainer.innerHTML = '';
 
         labels.forEach((label, index) => {
-            // Create main container
+            // Skip labels with category 'main'
+            if (label.category === 'main') return;
+
+            // Rest of the visualization code remains the same
             const segmentDiv = document.createElement('div');
             segmentDiv.className = 'segment-container';
             segmentDiv.style.margin = '15px 0';
@@ -502,9 +529,10 @@
             labelInfo.style.flex = '1';
             labelInfo.innerHTML = `
                 <div class="d-flex gap-3">
-                    <span class="badge bg-primary">${label.category || 'No Category'}</span>
-                    <span class="badge bg-secondary">${label.label || 'No Label'}</span>
-                    <span class="badge bg-info">${label.title || 'No Title'}</span>
+                    ${label.category ? `<span class="badge bg-primary">${label.category}</span>` : ''}
+                    ${label.label ? `<span class="badge bg-secondary">${label.label}</span>` : ''}
+                    ${label.title ? `<span class="badge bg-info">${label.title}</span>` : ''}
+                    <span>${label.start_time.toFixed(3)} -> ${label.end_time.toFixed(3)}</span>
                 </div>
             `;
 
@@ -651,6 +679,42 @@
         button.innerHTML = '<i class="fas fa-play"></i> Play Segment';
         button.classList.replace('btn-danger', 'btn-success');
         button.onclick = () => playSegment(label);
+    }
+
+    function saveAnnotations() {
+        fetch('/save_labels/{{ day }}/{{ audio_name }}/{{ mocap_bvh_name }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(labels)
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Show success message
+            const feedbackDiv = document.createElement('div');
+            feedbackDiv.className = 'alert alert-success position-fixed top-0 start-50 translate-middle-x mt-3';
+            feedbackDiv.style.zIndex = '1000';
+            feedbackDiv.innerHTML = 'Labels saved successfully!';
+            document.body.appendChild(feedbackDiv);
+            
+            setTimeout(() => {
+                feedbackDiv.remove();
+            }, 2000);
+        })
+        .catch(error => {
+            console.error('Error saving labels:', error);
+            // Show error message
+            const feedbackDiv = document.createElement('div');
+            feedbackDiv.className = 'alert alert-danger position-fixed top-0 start-50 translate-middle-x mt-3';
+            feedbackDiv.style.zIndex = '1000';
+            feedbackDiv.innerHTML = 'Error saving labels!';
+            document.body.appendChild(feedbackDiv);
+            
+            setTimeout(() => {
+                feedbackDiv.remove();
+            }, 2000);
+        });
     }
 </script>
 

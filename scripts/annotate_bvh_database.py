@@ -54,6 +54,29 @@ def clips_from_flags(flags):
     
     return clips
 
+def get_joint_positions(bvh_file_path):
+    from easyannot.mytools.bvhtools import BVHSkeleton
+    from scipy.spatial.transform import Rotation as R
+    bvh_data = BVHSkeleton(bvh_file_path)
+    joint_names = bvh_data.bvh.get_joints_names()
+    valid_index = [i for i, name in enumerate(joint_names) if 'LeftHand' not in name and 'RightHand' not in name]
+    # frames: (nframes, (njoints+1)*3)
+    frames = np.array(bvh_data.bvh.frames, dtype=np.float32)
+    angles = frames[:, 3:].reshape(frames.shape[0], -1, 3)
+    # 从欧拉角转旋转矩阵
+    angles_flat = angles.reshape(-1, 3)
+    rotation = R.from_euler("ZXY", angles_flat, degrees=True).as_matrix().reshape(angles.shape[0], -1, 3, 3)
+    # 从旋转矩阵转关节位置
+    positions = bvh_data.forward(params={
+        'poses': torch.FloatTensor(rotation),
+        'offsets': bvh_data.offsets,
+        'trans': torch.FloatTensor(frames[:, :3])
+        }, input_rotation_matrix=True)['keypoints3d']
+    angles_body = angles[:, valid_index]
+    body_index = [i for i, name in enumerate(joint_names) if 'LeftHand' not in name and 'RightHand' not in name]
+    body_index.extend([joint_names.index('LeftHand'), joint_names.index('RightHand')])
+    return angles_body, angles, rotation, positions.numpy(), positions[:, body_index]
+
 @app.route('/list_mocap_files/<day>')
 def list_mocap_files(day):
     root_path = args.root
@@ -114,37 +137,7 @@ def _get_audio_energy(audio_file_path):
     # 归一化mel_energy
     trim_start, trim_end = 50, 50
     mel_energy = (mel_energy_raw - mel_energy_raw[trim_start:-trim_end].min()) / (mel_energy_raw[trim_start:-trim_end].max() - mel_energy_raw[trim_start:-trim_end].min())
-    return mel_energy.cpu().numpy().tolist()
-
-@app.route('/get_audio_energy/<day>/<filename>')
-def get_audio_energy(day, filename):
-    root_path = args.root
-    audio_file_path = os.path.join(root_path, day, 'audio', filename)
-    audio_energy = _get_audio_energy(audio_file_path)
-    return jsonify(audio_energy)
-
-def _get_motion_velocity(mocap_file_path):
-    import bvhtoolbox as bt
-    with open(mocap_file_path, "r") as f:
-        bvh = bt.BvhTree(f.read())
-    motion = np.array(bvh.frames, dtype=np.float32)
-    angles = motion[:, 3:].reshape(motion.shape[0], -1, 3)
-    joint_names = bvh.get_joints_names()
-    valid_index = [i for i, name in enumerate(joint_names) if 'LeftHand' not in name and 'RightHand' not in name]
-    angles = angles[:, valid_index]
-    vel = np.abs(angles[1:] - angles[:-1]).mean(axis=-1).mean(axis=-1)
-    vel = np.insert(vel, 0, 0)
-    print(f'vel: {vel.shape}, {vel.min()}, {vel.max()}')
-    return None, angles, vel
-
-@app.route('/get_motion_velocity/<day>/<filename>')
-def get_motion_velocity(day, filename):
-    root_path = args.root
-    mocap_file_path = os.path.join(root_path, day, args.mocap_dir, filename)
-    _, _, motion_velocity = _get_motion_velocity(mocap_file_path)
-    mannual_set_vel_max = 0.4
-    motion_velocity = (motion_velocity / mannual_set_vel_max).tolist()
-    return jsonify(motion_velocity)
+    return mel_energy
 
 @app.route('/get_audio_file/<day>/<filename>')
 def get_audio_file(day, filename):
@@ -166,34 +159,128 @@ def get_bvh_file(day, filename):
     else:
         import ipdb; ipdb.set_trace()
 
+def _update_flag_by_clips(flag, min_frame):
+    clips = clips_from_flags(flag)
+    flag_update = np.zeros_like(flag)
+    for clip in clips:
+        if clip[1] - clip[0] > min_frame:
+            flag_update[clip[0]:clip[1]] = True
+    return flag_update
+
+# 判断条件
+# 选择能用的片段的标准：
+# 对于一个能用的片段中的每一帧，要求
+# 1. 不是 T Pose
+# 2. 大小为S的窗口内的平均音频能量 > 阈值
+# 3. 大小为S窗口内的平均速度 > 阈值
+# motion条件导致的问题：部分区间有音频，但是姿态是保持静止的
+# audio条件导致的问题：话说完了，然后过渡回rest pose
+
+# 对于一个获得的片段，进一步：
+# 1. 起始帧的速度 < 阈值，如果不是，需要向右收缩，直到找到阈值
+# 2. 结束帧的速度 < 阈值，如果不是，需要向后延长，直到找到阈值
+
+
+def _find_main_clips(angles_body, audio_energy, positions_body,
+                     min_silent_frame=60):
+    """
+        用于寻找 有效区间
+    """
+    # calculate motion velocity
+    vel = np.linalg.norm(positions_body[1:] - positions_body[:-1], axis=-1).max(axis=-1)
+    vel = np.insert(vel, 0, vel[0])
+    # 1. 排除无效区间
+    angle_max = np.abs(angles_body).max(axis=-1).max(axis=-1)
+    flag_is_tpose = angle_max < 20 # degree
+    flag_is_tpose = _update_flag_by_clips(flag_is_tpose, min_frame=5)
+    # 计算速度
+    flag_no_motion = _update_flag_by_clips(vel < 0.1, min_frame=60)
+    # check audio
+    # smooth audio energy
+    window_size = 5
+    # padding window_size
+    audio_energy = np.pad(audio_energy, (window_size, window_size), mode='edge')
+    audio_energy = np.convolve(audio_energy, np.ones(2*window_size+1), mode='valid') / (2*window_size+1)
+    flag_no_audio = _update_flag_by_clips(audio_energy < 0.15, min_frame=min_silent_frame)
+    # 组合flag
+    flag_main_clip = ~flag_is_tpose
+    flag_main_clip = flag_main_clip & (~flag_no_audio)
+    # flag_main_clip = flag_main_clip & (~flag_no_motion)
+    clips_main_clip = clips_from_flags(flag_main_clip)
+    labels = []
+    motion_fps = 120
+    for (start, end) in clips_main_clip:
+        if end - start < 120:
+            continue
+        # 起始帧的速度 < 阈值
+        # 找一个最近的start，使得vel[start] < 0.1，同时往左右两边扩展
+        for offset in range(0, end - start):
+            if vel[start + offset] < 0.1 and not flag_is_tpose[start + offset]:
+                start = start + offset
+                break
+            elif start - offset >= 0 and vel[start - offset] < 0.1 and not flag_is_tpose[start - offset]:
+                start = start - offset
+                break
+        else:
+            start = end
+            continue
+        for offset in range(0, end - start):
+            if vel[end - offset] < 0.1:
+                end = end - offset
+                break
+            elif end + offset < vel.shape[0] and vel[end + offset] < 0.1:
+                end = end + offset
+                break
+        else:
+            end = start
+            continue
+        if end - start < 120:
+            continue
+        labels.append({
+            'category': 'main',
+            'label': '',
+            'title': '',
+            'start_time': start / motion_fps,
+            'end_time': end / motion_fps
+        })
+    return labels, vel
+
 @app.route('/get_labels/<day>/<audio_name>/<bvh_name>')
 def get_labels(day, audio_name, bvh_name):
     root_path = args.root
     label_file_path = os.path.join(root_path, day, args.label_dir, audio_name.replace('.wav', '.json'))
-    if not os.path.exists(label_file_path):
-        print(f'{label_file_path} not exists')
+    audio_file_path = os.path.join(root_path, day, 'audio', audio_name)
+    # audio_energy: (second x 100, 1)
+    audio_energy = _get_audio_energy(audio_file_path)
+    audio_fps, motion_fps = 100, 120
+    target_length = int(audio_energy.shape[0] * motion_fps / audio_fps)
+    audio_energy = torch.nn.functional.interpolate(audio_energy.T[None], size=target_length, mode='linear', align_corners=False)[0].T
+    # motion
+    bvh_file_path = os.path.join(root_path, day, args.mocap_dir, bvh_name)
+    angles_body, angles, rotations, positions, positions_body = get_joint_positions(bvh_file_path)
+    if audio_energy.shape[0] > positions.shape[0]:
+        audio_energy = audio_energy[:positions.shape[0]]
+    else:
+        # padding audio_energy
+        padding = positions.shape[0] - audio_energy.shape[0]
+        audio_energy = torch.cat([audio_energy, audio_energy[-1:].repeat(padding, 1)])
+    audio_energy = audio_energy[:, 0].numpy()
+    labels_main, vel = _find_main_clips(angles_body, audio_energy, positions_body)
+    # 寻找有效的区间
     if not os.path.exists(label_file_path):
         # 读入bvh文件与audio文件
-        bvh_file_path = os.path.join(root_path, day, args.mocap_dir, bvh_name)
-        positions, angles, angle_vel = _get_motion_velocity(bvh_file_path)
-        angle_max = np.abs(angles).max(axis=-1).max(axis=-1)
-        flag_is_tpose = angle_max < 20 # degree
-        clips_tpose = clips_from_flags(flag_is_tpose)
-        labels = []
-        motion_fps = 120
-        for (start, end) in clips_tpose:
-            labels.append({
-                'start_pose': 't_pose',
-                'end_pose': 't_pose',
-                'category': 'tpose',
-                'label': '',
-                'title': '',
-                'start_time': start / motion_fps,
-                'end_time': end / motion_fps
-            })
+        # 计算rotation与单位阵的差异
+        labels = labels_main
     else:
         labels = read_json_label(label_file_path)
-    return jsonify(labels)
+        if len([l for l in labels if l['category'] == 'main']) == 0:
+            labels.extend(labels_main)
+    ret = {
+        'audio_energy': audio_energy.tolist(),
+        'motion_velocity': vel.tolist(),
+        'labels': labels
+    }
+    return jsonify(ret)
 
 @app.route('/visualize/<day>/<int:index>')
 def visualize(day, index):
