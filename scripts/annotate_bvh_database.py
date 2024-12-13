@@ -120,6 +120,13 @@ def list_mocap_files(day):
         audio_file = os.path.join(audio_folder, audio_file)
         # audio_file = os.path.relpath(audio_file, root_path)
         audio_file = os.path.basename(audio_file)
+        if args.check_clips:
+            clip_file = os.path.join(root_path, day, args.label_dir, audio_file.replace('.wav', '.json'))
+            if os.path.exists(clip_file):
+                clip_info = read_json_label(clip_file)
+                clip_main = [l for l in clip_info if l['category'] == 'main']
+                if len(clip_main) > 0:
+                    continue
         # audio_file = '/static/' + os.path.relpath(audio_file, static_folder)
         # bvh_file = '/static/' + os.path.relpath(bvh_file[0], static_folder)
         bvh_file = bvh_file[0]
@@ -142,12 +149,23 @@ def list_days():
     days = [d for d in os.listdir(root_path) if os.path.isdir(os.path.join(root_path, d))]
     # Sort the directories
     days.sort()
-    return render_template('index_any_folder.html', href='list_mocap_files', days=days)
+    days_valid = []
+    for day in days:
+        audio_dir = os.path.join(root_path, day, 'audio')
+        mocap_dir = os.path.join(root_path, day, args.mocap_dir)
+        if not os.path.exists(audio_dir) or not os.path.exists(mocap_dir):
+            print(f'{day} has no audio or mocap')
+            continue
+        days_valid.append(day)
+    return render_template('index_any_folder.html', href='list_mocap_files', days=days_valid)
 
 def format_label(label):
     # [{'start_pose': 't_pose', 'end_pose': 't_pose', 'semantic_label': '', 'start_time': 0, 'end_time': 2.81906}, {'start_pose': 'i2', 'end_pose': 'i2', 'semantic_label': '', 'start_time': 2.819, 'end_time': 94.34608}, {'start_pose': 'last', 'end_pose': 'last', 'semantic_label': '', 'start_time': 94.346, 'end_time': 94.533}]
     label.sort(key=lambda x: x['start_time'])
     return label
+
+def _normalize_energy(energy, trim_start=50, trim_end=50):
+    return np.clip((energy - energy[trim_start:-trim_end].min()) / (energy[trim_start:-trim_end].max() - energy[trim_start:-trim_end].min()), 0, 1)
 
 def _get_audio_energy(audio_file_path):
     import whisper
@@ -159,10 +177,19 @@ def _get_audio_energy(audio_file_path):
     # target_length = int(mel.shape[0] * target_fps / source_fps)
     # mel = torch.nn.functional.interpolate(mel.T[None], size=target_length, mode='linear', align_corners=False)[0].T
     mel_energy_raw = torch.norm(torch.exp(mel), dim=-1, keepdim=True)
-    # 归一化mel_energy
-    trim_start, trim_end = 50, 50
-    mel_energy = (mel_energy_raw - mel_energy_raw[trim_start:-trim_end].min()) / (mel_energy_raw[trim_start:-trim_end].max() - mel_energy_raw[trim_start:-trim_end].min())
-    return mel_energy
+    audio_fps, motion_fps = 100, 120
+    target_length = int(mel_energy_raw.shape[0] * motion_fps / audio_fps)
+    # 这个插值会改变数据的大小，原理是通过线性插值将数据调整到目标长度
+    mel_energy_raw = torch.nn.functional.interpolate(mel_energy_raw.T[None], size=target_length, mode='linear', align_corners=False)[0].T
+    mel_energy_raw = mel_energy_raw.numpy()
+    # smooth audio energy
+    window_size = 5
+    # padding window_size
+    mel_energy_raw = np.pad(mel_energy_raw[:, 0], (window_size, window_size), mode='edge')
+    mel_energy_raw = np.convolve(mel_energy_raw, np.ones(2*window_size+1), mode='valid') / (2*window_size+1)
+    # normalize mel_energy_raw
+    mel_energy_raw = _normalize_energy(mel_energy_raw, trim_start=50, trim_end=50)
+    return mel_energy_raw
 
 @app.route('/get_audio_file/<day>/<filename>')
 def get_audio_file(day, filename):
@@ -219,17 +246,18 @@ def _find_main_clips(angles_body, audio_energy, positions_body,
     # calculate motion velocity
     vel = np.linalg.norm(positions_body[1:] - positions_body[:-1], axis=-1).max(axis=-1)
     vel = np.insert(vel, 0, vel[0])
+    # 速度需要进行窗口插值
+    motion_window_size = 5
+    vel = np.pad(vel, (motion_window_size, motion_window_size), mode='edge')
+    vel = np.convolve(vel, np.ones(2*motion_window_size+1), mode='valid') / (2*motion_window_size+1)
+
     # 1. 排除无效区间
     angle_max = np.abs(angles_body).max(axis=-1).max(axis=-1)
     flag_is_tpose = angle_max < tpose_angle_thres # degree
     flag_is_tpose = _update_flag_by_clips(flag_is_tpose, min_frame=5)
     # check audio
-    # smooth audio energy
-    window_size = 5
-    # padding window_size
-    audio_energy = np.pad(audio_energy, (window_size, window_size), mode='edge')
-    audio_energy = np.convolve(audio_energy, np.ones(2*window_size+1), mode='valid') / (2*window_size+1)
-    flag_no_audio = _update_flag_by_clips(audio_energy < audio_energy_thres, min_frame=min_silent_frame)
+    flag_no_audio_single_frame = audio_energy < audio_energy_thres
+    flag_no_audio = _update_flag_by_clips(flag_no_audio_single_frame, min_frame=min_silent_frame)
     # 组合flag
     flag_main_clip = ~flag_is_tpose
     flag_main_clip = flag_main_clip & (~flag_no_audio)
@@ -245,39 +273,59 @@ def _find_main_clips(angles_body, audio_energy, positions_body,
         # Adjust the start and end indices of the clip to ensure the velocity is below the threshold.
         # If the velocity at the start is above the threshold, search for the nearest point within the clip
         # where the velocity is below the threshold, and adjust the start index accordingly.
+        def _check_frame(frame_index):
+            if frame_index < 0 or frame_index >= vel.shape[0]:
+                return False
+            flag_vel = vel[frame_index] < min_vel_threshold
+            flag_tpose = flag_is_tpose[frame_index]
+            flag_no_audio = flag_no_audio_single_frame[frame_index]
+            return flag_vel and not flag_tpose and flag_no_audio
+
         if vel[start] > min_vel_threshold:
-            for offset in range(0, end - start):
-                if vel[start + offset] < min_vel_threshold and \
-                    not flag_is_tpose[start + offset] and \
-                        flag_no_audio[start + offset]:
-                    start = start + offset
-                    break
-                elif start - offset >= 0 and \
-                    vel[start - offset] < min_vel_threshold and \
-                        not flag_is_tpose[start - offset] and \
-                            flag_no_audio[start - offset]:
+            step_size = 2
+            print(f'  check start vel: {vel[start]} with step size = {step_size}')
+            flag_found_peak = False
+            for offset in range(step_size, end - start, step_size):
+                if _check_frame(start - offset):
                     start = start - offset
+                    flag_found_peak = True
                     break
-            else:
+                if _check_frame(start + offset):
+                    start = start + offset
+                    flag_found_peak = True
+                    break
+                if start - offset >= 0:
+                    print(f'    {start - offset:6d} not satisfy: vel={vel[start - offset]:.3f}, is_tpose={flag_is_tpose[start - offset]}, no_audio={flag_no_audio_single_frame[start - offset]}')
+                print(f'    {start + offset:6d} not satisfy: vel={vel[start + offset]:.3f}, is_tpose={flag_is_tpose[start + offset]}, no_audio={flag_no_audio_single_frame[start + offset]}')
+            if not flag_found_peak:
                 start = end
+                print(f'  not found peak, set start = {start}')
                 continue
+            else:
+                print(f'  found peak at {start}')
         # Similarly, adjust the end index if the velocity at the end is above the threshold.
         if vel[end-1] > min_vel_threshold:
-            for offset in range(1, end - start):
-                if vel[end - offset] < min_vel_threshold and \
-                    not flag_is_tpose[end - offset] and \
-                        flag_no_audio[end - offset]:
+            step_size = 2
+            print(f'  check end vel: {vel[end-1]} with step size = {step_size}')
+            flag_found_peak = False
+            for offset in range(step_size, end - start, step_size):
+                if _check_frame(end - offset):
                     end = end - offset
+                    flag_found_peak = True
                     break
-                elif end + offset < vel.shape[0] and \
-                    vel[end + offset] < min_vel_threshold and \
-                        not flag_is_tpose[end + offset] and \
-                            flag_no_audio[end + offset]:
+                if _check_frame(end + offset):
                     end = end + offset
+                    flag_found_peak = True
                     break
-            else:
+                print(f'    {end - offset:6d} not satisfy: vel={vel[end - offset]:.3f}, is_tpose={flag_is_tpose[end - offset]}, no_audio={flag_no_audio_single_frame[end - offset]}')
+                if end + offset < vel.shape[0]:
+                    print(f'    {end + offset:6d} not satisfy: vel={vel[end + offset]:.3f}, is_tpose={flag_is_tpose[end + offset]}, no_audio={flag_no_audio_single_frame[end + offset]}')
+            if not flag_found_peak:
                 end = start
+                print(f'  not found peak, set end = {end}')
                 continue
+            else:
+                print(f'  found peak at {end}')
         if end - start < min_window_size:
             continue
         labels.append({
@@ -289,14 +337,18 @@ def _find_main_clips(angles_body, audio_energy, positions_body,
             'start_time': start / motion_fps,
             'end_time': end / motion_fps
         })
+    if len(labels) == 0:
+        # 打印debug信息：
+        clip_audios = clips_from_flags(~flag_no_audio)
+        print(f'clips have audios: {clip_audios}')
+        clip_tpose = clips_from_flags(flag_is_tpose)
+        print(f'clips have tpose: {clip_tpose}')
+        print(f'clips main clip: {clips_main_clip}')
     return labels, vel
 
-def _get_labels(audio_name, bvh_name, strict=False):
+def _get_labels(audio_name, bvh_name, strict=False, motion_fps=120):
     # audio_energy: (second x 100, 1)
     audio_energy = _get_audio_energy(audio_name)
-    audio_fps, motion_fps = 100, 120
-    target_length = int(audio_energy.shape[0] * motion_fps / audio_fps)
-    audio_energy = torch.nn.functional.interpolate(audio_energy.T[None], size=target_length, mode='linear', align_corners=False)[0].T
     # motion
     angles_body, angles, rotations, positions, positions_body = get_joint_positions(bvh_name)
     if strict:
@@ -309,9 +361,17 @@ def _get_labels(audio_name, bvh_name, strict=False):
     else:
         # padding audio_energy
         padding = positions.shape[0] - audio_energy.shape[0]
-        audio_energy = torch.cat([audio_energy, audio_energy[-1:].repeat(padding, 1)])
-    audio_energy = audio_energy[:, 0].numpy()
-    labels_main, vel = _find_main_clips(angles_body, audio_energy, positions_body)
+        audio_energy = np.concatenate([audio_energy, audio_energy[-1:].repeat(padding, axis=0)])
+    audio_energy = audio_energy
+    labels_main, vel = _find_main_clips(angles_body, audio_energy, positions_body, min_vel_threshold=args.min_vel_threshold)
+    # 添加一个dummy的
+    labels_main.append({
+        'category': 'dummy',
+        'label': '',
+        'title': '',
+        'start_frame': 0,
+        'end_frame': vel.shape[0],
+    })
     return labels_main, audio_energy, vel
 
 @app.route('/get_labels/<day>/<audio_name>/<bvh_name>')
@@ -366,7 +426,12 @@ def generate_labels(args):
         print(f'generate labels for {day}')
         mocap_folder = os.path.join(root_path, day, args.mocap_dir)
         audio_folder = os.path.join(root_path, day, 'audio')
-
+        if not os.path.exists(audio_folder):
+            print(f'{audio_folder} not exists')
+            continue
+        if not os.path.exists(mocap_folder):
+            print(f'{mocap_folder} not exists')
+            continue
         audio_files = sorted([f for f in os.listdir(audio_folder) if f.endswith('.wav')])
         files_info[day] = []
         for audio_file in tqdm(audio_files, desc=f'{day}'):
@@ -379,17 +444,16 @@ def generate_labels(args):
                 continue
             bvh_file_path = bvh_file[0]
 
-            if os.path.exists(label_file_name):
+            if os.path.exists(label_file_name) and not args.restart:
                 # read the label
                 with open(label_file_name, 'r') as f:
                     labels = json.load(f)
                 # 检查一下total frames
-                # bvh = read_bvh(bvh_file_path)
-                # total_frames = len(bvh.frames)
-                if len(labels) == 0:
+                label_dummy = [l for l in labels if l['category'] == 'dummy']
+                if len(label_dummy) == 0:
                     total_frames = 0
                 else:
-                    total_frames = labels[-1]['end_frame'] - labels[0]['start_frame']
+                    total_frames = label_dummy[0]['end_frame'] - label_dummy[0]['start_frame']
                 files_info[day].append({
                     'total_frames': total_frames,
                     'valid_frames': sum([l['end_frame'] - l['start_frame'] for l in labels if l['category'] == 'main']),
@@ -412,11 +476,8 @@ def generate_labels(args):
             })
             with open(label_file_name, 'w') as f:
                 json.dump(labels_main, f, indent=4)
-    # 写入report文件
-    with open(os.path.join('./', 'report_clips.json'), 'w') as f:
-        json.dump(files_info, f, indent=4)
-    # 分别统计每一天的量，形成���格输出
-    headers = ['day', 'total_frames', 'valid_frames', 'valid_clips']
+    # 分别统计每一天的量，形成格输出
+    headers = ['day', 'total_frames', 'valid_frames', 'valid_ratio', 'valid_time', 'valid_clips']
     rows = []
     total_frames_sum = 0
     valid_frames_sum = 0
@@ -426,7 +487,9 @@ def generate_labels(args):
         total_frames = sum([l['total_frames'] for l in info])
         valid_frames = sum([l['valid_frames'] for l in info])
         valid_clips = sum([l['valid_clips'] for l in info])
-        rows.append([day, total_frames, valid_frames, valid_clips])
+        valid_ratio = valid_frames / total_frames
+        valid_time = valid_frames / 120
+        rows.append([day, total_frames, valid_frames, valid_ratio, valid_time, valid_clips])
 
         # Accumulate totals
         total_frames_sum += total_frames
@@ -434,10 +497,11 @@ def generate_labels(args):
         valid_clips_sum += valid_clips
 
     # Add a summary row
-    rows.append(['Total', total_frames_sum, valid_frames_sum, valid_clips_sum])
+    rows.append(['Total', total_frames_sum, valid_frames_sum, valid_frames_sum / total_frames_sum, valid_frames_sum / 120, valid_clips_sum])
 
     from tabulate import tabulate
-    print(tabulate(rows, headers=headers, tablefmt='grid'))
+    print(tabulate(rows, headers=headers, tablefmt='fancy_grid'))
+    print(tabulate(rows, headers=headers, tablefmt='fancy_grid'), file=open('./report_clips_axx.txt', 'a'))
 
 if __name__ == '__main__':
     import argparse
@@ -448,7 +512,10 @@ if __name__ == '__main__':
     parser.add_argument('--label_dir', type=str, default='label_trim')
     parser.add_argument('--scale', type=float, default=1.0)
     parser.add_argument('--silent_frame', type=int, default=30)
+    parser.add_argument('--min_vel_threshold', type=float, default=0.1)
     parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--restart', action='store_true')
+    parser.add_argument('--check_clips', action='store_true')
     parser.add_argument('--generate', action='store_true')
     args = parser.parse_args()
 
@@ -465,3 +532,5 @@ if __name__ == '__main__':
     # failure case
     # http://9.134.230.186:5001/visualize/20240612_ZGL/46
     # python3 scripts/annotate_bvh_database.py --root /apdcephfs_cq10/share_1467498/datasets/motion_data/a2g/project --mocap_dir MoCap_bvh --port 5001 --silent_frame 240 --generate
+    # 处理project_extend数据
+    # python3 scripts/annotate_bvh_database.py --root /apdcephfs_cq10/share_1467498/datasets/motion_data/a2g/project_extend --mocap_dir MoCap_bvh_align --port 5001 --silent_frame 120 --min_vel_threshold 0.15 --generate

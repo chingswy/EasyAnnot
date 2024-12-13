@@ -13,23 +13,24 @@
                 style="width: 25%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"> </div>
         </div>
 
-        <div class="d-flex justify-content-center align-items-center mt-2">
-            <div id="video-timestamp" style="color: black; font-size: 12px;">0.00</div>
-        </div>
-
         <div class="d-flex justify-content-center" id="vis3d"></div>
 
     </div>
     <div class="draggable-divider" id="divider" style="width: 5px; background-color: #ccc; cursor: ew-resize;"></div>
     <div id="right-area" style="flex: 1; overflow: auto;">
         <!-- Add any additional content or controls here -->
+        <div class="d-flex justify-content-center align-items-center mt-2">
+            <div id="video-timestamp" style="color: black; font-size: 12px;">0.00</div>
+        </div>
         <div style="text-align: center; margin-top: 10px;">
             <h5>Audio Energy</h5>
             <canvas id="canvas_audio" width="100%" height="10" style="width: 100%; border: 1px solid #ccc; border-radius: 4px; margin: 10px 0; padding: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></canvas>
+            <div id="audio-energy-value" style="font-size: 12px; color: #333;">Audio Energy: 0</div>
         </div>
         <div style="text-align: center; margin-top: 10px;">
             <h5>Motion Capture Velocity</h5>
             <canvas id="canvas_mocap" width="100%" height="10" style="width: 100%; border: 1px solid #ccc; border-radius: 4px; margin: 10px 0; padding: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></canvas>
+            <div id="mocap-velocity-value" style="font-size: 12px; color: #333;">Velocity: 0</div>
         </div>
 
         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -137,13 +138,14 @@
         .then(data => {
             // check audio energy
             audioEnergies = data['audio_energy'];
-            console.log("get audio energy success: ", audioEnergies.length);
+            console.log("get audio energy success: ", audioEnergies.length, Math.min(...audioEnergies), Math.max(...audioEnergies));
             // Call initAudioCanvas once during initialization
             initCanvas(audioCanvas);
             drawEnergies(audioCanvas, audioEnergies);
             // check motion velocity
             motionVelocity = data['motion_velocity'];
-            console.log("get motion velocity success: ", motionVelocity.length);
+            // log motion velocity
+            console.log("get motion velocity success: ", motionVelocity.length, Math.min(...motionVelocity), Math.max(...motionVelocity));
             initCanvas(mocapCanvas);
             drawEnergies(mocapCanvas, motionVelocity);
             // check labels
@@ -210,8 +212,8 @@
         // Draw y-axis grid lines every 0.1
         ctx.strokeStyle = '#d3d3d3'; // Light gray color
         ctx.lineWidth = 1;
-        for (let i = 0.1; i < 1; i += 0.1) {
-            const y = rect.height - i * rect.height;
+        for (let i = 0.0; i < 1; i += 0.1) {
+            const y = i * rect.height;
             ctx.beginPath();
             ctx.moveTo(0, y);
             ctx.lineTo(rect.width, y);
@@ -224,16 +226,16 @@
 
         // Calculate width between points
         const pointSpacing = rect.width / (energies.length - 1);
-        const heightScale = rect.height * 0.8; // Leave some margin
+        const heightScale = rect.height; // Leave some margin
 
         // Start the path
         ctx.beginPath();
-        ctx.moveTo(0, rect.height - energies[0] * heightScale);
+        ctx.moveTo(0, (0.9 - energies[0]) * heightScale); // Adjusted to ensure 0 values are visible
 
         // Draw line connecting all points
         for (let i = 1; i < energies.length; i++) {
             const x = i * pointSpacing;
-            const y = rect.height - energies[i] * heightScale;
+            const y = (0.9 - energies[i]) * heightScale; // Adjusted to ensure 0 values are visible
             ctx.lineTo(x, y);
         }
         // Render the line
@@ -402,7 +404,7 @@
         mixer = new THREE.AnimationMixer(result.skeleton.bones[0]);
         action = mixer.clipAction(result.clip);
         action.setLoop(THREE.LoopOnce); // 设置为只播放一次
-        action.clampWhenFinished = true; // 在结束时保持在最后一帧
+        action.clampWhenFinished = true; // 在结束时保持���最后一帧
 
         // 获取动画信息
         const totalFrames = result.clip.tracks[0].times.length;
@@ -587,7 +589,14 @@
         ctx.fillRect(startX, 0, endX - startX, canvas.height);
     }
 
-    // Modify animate function to update segment visualizations
+    function updateTimestamp() {
+        const timestampElement = document.getElementById('video-timestamp');
+        if (action && audio) {
+            const currentTime = Math.min(action.time, audio.currentTime);
+            timestampElement.textContent = currentTime.toFixed(2);
+        }
+    }
+
     function animate() {
         const delta = clock.getDelta();
 
@@ -598,28 +607,19 @@
             const current_time_ratio = action.time / action.getClip().duration;
             drawEnergies(audioCanvas, audioEnergies, current_time_ratio);
             drawEnergies(mocapCanvas, motionVelocity, current_time_ratio);
-            // drawLabels(mocapCanvas, labels);
 
-            // Update segment visualizations
-            // const segmentCanvases = document.querySelectorAll('.segment-canvas');
-            // segmentCanvases.forEach((canvas, index) => {
-            //     const ctx = canvas.getContext('2d');
-            //     const currentX = current_time_ratio * canvas.width;
-                
-            //     // Draw current time indicator
-            //     ctx.strokeStyle = 'red';
-            //     ctx.lineWidth = 2;
-            //     ctx.beginPath();
-            //     ctx.moveTo(currentX, 0);
-            //     ctx.lineTo(currentX, canvas.height);
-            //     ctx.stroke();
-            // });
+            // Update the timestamp
+            updateTimestamp();
 
             // 更新进度条
             progressBar.value = action.time / action.getClip().duration;
 
-            // 检查当前时间是否在标签范围内
-            const currentTime = action.time;
+            // Update audio energy and motion capture velocity values
+            const currentAudioEnergy = audioEnergies[Math.floor(current_time_ratio * audioEnergies.length)] || 0;
+            const currentMocapVelocity = motionVelocity[Math.floor(current_time_ratio * motionVelocity.length)] || 0;
+
+            document.getElementById('audio-energy-value').textContent = `${currentAudioEnergy.toFixed(2)}`;
+            document.getElementById('mocap-velocity-value').textContent = `${currentMocapVelocity.toFixed(2)}`;
         }
         renderer.render(scene, camera);
     }
