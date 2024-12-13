@@ -54,13 +54,14 @@ def get_offsets(bvh):
         offsets.append(bvh.joint_offset(joint_name))
     return offsets
 
-def get_kintree(data):
+def get_kintree(data, verbose=True):
     joints = data.get_joints()
     joint_names = data.get_joints_names()
     parents = []
     for joint in joints:
         if joint.name in ["Hips", "pelvis"]:
-            print(f'Set {joint.name} as the root joint')
+            if verbose:
+                print(f'Set {joint.name} as the root joint')
             parents.append(-1)
         else:
             parent_name = joint.parent.name
@@ -99,17 +100,18 @@ def forward_kinematics(parents, offset, R):
     return results[:, :, :3, 3]
 
 class BVHSkeleton(torch.nn.Module):
-    def __init__(self, bvh_path, scale=1.0):
+    def __init__(self, bvh_path, scale=1.0, verbose=True):
         super().__init__()
         assert os.path.exists(bvh_path), f'BVH file {bvh_path} does not exist'
         self.bvh = read_bvh(bvh_path)
         self.joint_names = self.bvh.get_joints_names()
-        print(f'>>> Read {len(self.joint_names)} joints: {self.joint_names}')
+        if verbose:
+            print(f'>>> Read {len(self.joint_names)} joints: {self.joint_names}')
         # motion = np.array(self.bvh.frames, dtype=np.float32)
         offsets = get_offsets(self.bvh)
         offsets = torch.FloatTensor(offsets) * scale
         self.register_buffer('offsets', offsets)
-        parents = get_kintree(self.bvh)
+        parents = get_kintree(self.bvh, verbose=verbose)
         self.parents = parents
     
     @property

@@ -1,2 +1,6 @@
 numpy
 Flask==3.0.3
+openai-whisper
+bvhtoolbox
+scipy
+tabulate

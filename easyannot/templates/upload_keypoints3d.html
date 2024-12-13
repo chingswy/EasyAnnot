@@ -8,8 +8,9 @@
     </div>
     <!-- 添加播放按钮 -->
      <!-- 新增的 labelDisplay 元素 -->
+     <div id="currentTimeDisplay" style="text-align: center; margin-top: 10px;">null</div>
      <progress id="animationProgress" value="0" max="1" style="width: 100%;"></progress>
-    <div id="labelDisplay" style="text-align: center; margin-top: 10px;">null</div>
+     <div id="labelDisplay" style="text-align: center; margin-top: 10px;">null</div>
     <div class="d-flex justify-content-center" id="vis3d"></div>
     <canvas id="audioVisualizer" width="600" height="100" style="width: 100%;"></canvas>
 </div>
@@ -93,7 +94,6 @@
     // labels:  [{'start_pose': 't_pose', 'end_pose': 't_pose', 'semantic_label': '', 'start_time': 0, 'end_time': 2.81906}, {'start_pose': 'i2', 'end_pose': 'i2', 'semantic_label': '', 'start_time': 2.819, 'end_time': 94.34608}, {'start_pose': 'last', 'end_pose': 'last', 'semantic_label': '', 'start_time': 94.346, 'end_time': 94.533}]
     // Create color map for different semantic labels
     // Get total duration from the last label's end time
-    const totalDuration = labels[labels.length - 1].end_time;
 
     // 用于存储音量数据的缓冲区
     const volumeBuffer = new Array(100).fill(0); // 10秒的缓冲区，假设每秒更新10次
@@ -184,12 +184,19 @@
         if (mixer) {
             mixer.update(delta);
 
-            // 更新进度条
+            // 更新进度条和时间显示
             const action = mixer.existingAction(mixer._actions[0]._clip);
             progressBar.value = action.time / action.getClip().duration;
+            
+            // 更新当前时间显示
+            const currentTime = action.time;
+            const currentTimeFormatted = currentTime.toFixed(2); // 保留2位小数
+            progressBar.title = `当前时间: ${currentTimeFormatted}秒`; // 在进度条上显示时间
+            
+            // 在页面上显示当前时间
+            document.getElementById('currentTimeDisplay').innerText = `当前时间: ${currentTimeFormatted}秒`;
 
             // 检查当前时间是否在标签范围内
-            const currentTime = action.time;
             let labelFound = false;
             for (const label of labels) {
                 if (currentTime >= label.start_time && currentTime <= label.end_time) {

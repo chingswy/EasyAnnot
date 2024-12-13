@@ -30,7 +30,9 @@ def read_json_label(label_path):
 @app.route('/list_mocap_files/<day>')
 def list_mocap_files(day):
     root_path = args.root
-    mocap_folder = os.path.join(root_path, day, 'MoCap_bvh')
+    mocap_folder = os.path.join(root_path, day, 'MoCap_bvh_align')
+    if not os.path.exists(mocap_folder):
+        mocap_folder = os.path.join(root_path, day, 'MoCap_bvh')
     label_folder = os.path.join(root_path, day, 'label')
     audio_folder = os.path.join(root_path, day, 'audio')
 
@@ -43,14 +45,15 @@ def list_mocap_files(day):
         if len(bvh_file) == 0:
             print(f'{audio_file} in {mocap_folder} has no bvh file')
             continue
-        label_file = glob.glob(os.path.join(label_folder, f'{audio_file.split(".")[0]}*.json'))
-        if len(label_file) == 0:
-            print(f'{audio_file} in {label_folder} has no label file')
-            continue
         audio_file = os.path.join(audio_folder, audio_file)
         audio_file = '/static/' + os.path.relpath(audio_file, static_folder)
         bvh_file = '/static/' + os.path.relpath(bvh_file[0], static_folder)
-        label_file = '/static/' + os.path.relpath(label_file[0], static_folder)
+        label_file = glob.glob(os.path.join(label_folder, f'{audio_file.split(".")[0]}*.json'))
+        if len(label_file) == 0:
+            # print(f'{audio_file} in {label_folder} has no label file')
+            label_file = ''
+        else:
+            label_file = '/static/' + os.path.relpath(label_file[0], static_folder)
         files_info[day].append({
             'audio': os.path.basename(audio_file), 
             'mocap': os.path.basename(bvh_file),
@@ -85,8 +88,11 @@ def visualize(day, index):
     mocap_bvh_name = urllib.parse.unquote(files_info[day][index]['mocap_path'])
     audio_name = urllib.parse.unquote(files_info[day][index]['audio_path'])
     label_name = urllib.parse.unquote(files_info[day][index]['label_path'])
-    label = read_json_label(os.path.join(static_folder, label_name.replace('/static/', '')))
-    label = format_label(label)
+    if label_name == '':
+        label = []
+    else:
+        label = read_json_label(os.path.join(static_folder, label_name.replace('/static/', '')))
+        label = format_label(label)
     return render_template('upload_keypoints3d.html', mocap_bvh_name=mocap_bvh_name, audio_name=audio_name, label_name=label_name, labels=label)
 
 
