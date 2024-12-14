@@ -188,17 +188,28 @@
 
         // First, draw main category labels as background
         if (labels) {
-            const mainLabels = labels.filter(label => label.category === 'main');
-            mainLabels.forEach(label => {
-                const startX = (label.start_time / action.getClip().duration) * rect.width;
-                const endX = (label.end_time / action.getClip().duration) * rect.width;
-                
-                // 使用淡红色填充
-                ctx.fillStyle = 'rgba(255, 182, 193, 0.3)'; // 淡红色带透明度
+            labels.forEach(label => {
+                let startX = 0;
+                let endX = 0;
+                if (label.category === 'main') {
+                    // 使用淡红色填充
+                    ctx.fillStyle = 'rgba(255, 182, 193, 0.3)'; // 淡红色带透明度
+                    ctx.strokeStyle = 'rgba(255, 182, 193, 0.8)';
+                    startX = (label.start_frame / energies.length) * rect.width;
+                    endX = (label.end_frame / energies.length) * rect.width;
+                } else if (label.category === 'clip') {
+                    // 使用淡蓝色填充
+                    ctx.fillStyle = 'rgba(144, 238, 144, 0.1)'; // 淡绿色带透明度
+                    ctx.strokeStyle = 'rgba(144, 238, 144, 0.1)';
+                    startX = ((label.start_frame + 10) / energies.length) * rect.width;
+                    endX = ((label.end_frame - 10) / energies.length) * rect.width;
+                } else {
+                    // 跳过其他类别
+                    return;
+                }
                 ctx.fillRect(startX, 0, endX - startX, rect.height);
                 
                 // 添加边界线
-                ctx.strokeStyle = 'rgba(255, 182, 193, 0.8)';
                 ctx.lineWidth = 1;
                 ctx.beginPath();
                 ctx.moveTo(startX, 0);
@@ -248,44 +259,6 @@
         ctx.moveTo(time_ratio * rect.width, 0);
         ctx.lineTo(time_ratio * rect.width, rect.height);
         ctx.stroke();
-    }
-
-    // Function to draw labels on the canvas
-    function drawLabels(canvas, labels) {
-        const rect = canvas.getBoundingClientRect();
-        const ctx = canvas.getContext('2d');
-        const heightScale = rect.height; // Leave some margin
-        const frameRate = 120; // 1 second = 120 frames
-
-
-        // Draw each label
-        labels.forEach(label => {
-            const startFrame = label.start_time * frameRate;
-            const endFrame = label.end_time * frameRate;
-            const startX = (startFrame / motionVelocity.length) * rect.width;
-            const endX = (endFrame / motionVelocity.length) * rect.width;
-            const width = endX - startX;
-
-            // Set color based on label type
-            if (!label.color) {
-                // Randomly initialize a color if not present
-                label.color = `rgba(${Math.random() * 255}, ${Math.random() * 255}, ${Math.random() * 255}, 0.3)`;
-            }
-            ctx.fillStyle = label.color;
-
-            // Draw the rectangle
-            ctx.fillRect(startX, 0, width, heightScale);
-
-            // Draw left and right borders
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(startX, 0);
-            ctx.lineTo(startX, rect.height);
-            ctx.moveTo(endX, 0);
-            ctx.lineTo(endX, rect.height);
-            ctx.stroke();
-        });
     }
 
     // Function to add dragging functionality to a canvas
@@ -404,7 +377,7 @@
         mixer = new THREE.AnimationMixer(result.skeleton.bones[0]);
         action = mixer.clipAction(result.clip);
         action.setLoop(THREE.LoopOnce); // 设置为只播放一次
-        action.clampWhenFinished = true; // 在结束时保持���最后一帧
+        action.clampWhenFinished = true; // 在结束时保持最后一帧
 
         // 获取动画信息
         const totalFrames = result.clip.tracks[0].times.length;
@@ -436,7 +409,7 @@
         }, 100);
     });
 
-    // 修改开始播放按钮的事件监听器
+    // 修改开始播放按钮的事��监听器
     document.getElementById('startPlaybackButton').addEventListener('click', function () {
         document.getElementById('playModal').style.display = 'none'; // 隐藏弹窗
         // 初始化动画
@@ -507,11 +480,11 @@
         const segmentsContainer = document.getElementById('segments');
         segmentsContainer.innerHTML = '';
 
-        labels.forEach((label, index) => {
+        labels.forEach((label) => {
             // Skip labels with category 'main'
             if (label.category === 'main') return;
+            if (label.category === 'dummy') return;
 
-            // Rest of the visualization code remains the same
             const segmentDiv = document.createElement('div');
             segmentDiv.className = 'segment-container';
             segmentDiv.style.margin = '15px 0';
@@ -519,7 +492,6 @@
             segmentDiv.style.borderRadius = '4px';
             segmentDiv.style.padding = '10px';
 
-            // First row - Canvas
             const canvasRow = document.createElement('div');
             canvasRow.style.width = '100%';
             canvasRow.style.marginBottom = '10px';
@@ -531,12 +503,10 @@
             canvas.style.display = 'block';
             canvasRow.appendChild(canvas);
 
-            // Second row - Info and controls
             const infoRow = document.createElement('div');
             infoRow.className = 'd-flex justify-content-between align-items-center';
             infoRow.style.gap = '10px';
 
-            // Left side - Labels
             const labelInfo = document.createElement('div');
             labelInfo.style.flex = '1';
             labelInfo.innerHTML = `
@@ -548,13 +518,15 @@
                 </div>
             `;
 
-            // Right side - Play button
             const playButton = document.createElement('button');
             playButton.className = 'btn btn-sm btn-success';
             playButton.innerHTML = '<i class="fas fa-play"></i> Play Segment';
-            playButton.onclick = () => playSegment(label);
 
-            // Assemble the layout
+            // Use a closure to capture the current label and button
+            playButton.onclick = (() => {
+                return () => playSegment(label);
+            })();
+
             infoRow.appendChild(labelInfo);
             infoRow.appendChild(playButton);
 
@@ -562,7 +534,6 @@
             segmentDiv.appendChild(infoRow);
             segmentsContainer.appendChild(segmentDiv);
 
-            // Initialize canvas
             initSegmentCanvas(canvas, label);
         });
     }
@@ -660,35 +631,7 @@
                     audio.currentTime = label.start_time;
                 }
             }, 100);
-
-            // Update button state
-            const allPlayButtons = document.querySelectorAll('.segment-container button');
-            allPlayButtons.forEach(btn => {
-                btn.innerHTML = '<i class="fas fa-play"></i> Play Segment';
-                btn.classList.replace('btn-danger', 'btn-success');
-            });
-            
-            const currentButton = event.currentTarget;
-            currentButton.innerHTML = '<i class="fas fa-stop"></i> Stop';
-            currentButton.classList.replace('btn-success', 'btn-danger');
-            
-            // Update button click handler
-            currentButton.onclick = () => stopSegmentPlayback(currentButton);
         }
-    }
-
-    // Add this function to handle stopping segment playback
-    function stopSegmentPlayback(button) {
-        if (window.segmentPlaybackInterval) {
-            clearInterval(window.segmentPlaybackInterval);
-            action.paused = true;
-            audio.pause();
-        }
-        
-        // Reset button state
-        button.innerHTML = '<i class="fas fa-play"></i> Play Segment';
-        button.classList.replace('btn-danger', 'btn-success');
-        button.onclick = () => playSegment(label);
     }
 
     function saveAnnotations() {

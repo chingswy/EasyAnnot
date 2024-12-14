@@ -259,7 +259,11 @@ def _find_main_clips(angles_body, audio_energy, positions_body,
     flag_no_audio_single_frame = audio_energy < audio_energy_thres
     flag_no_audio = _update_flag_by_clips(flag_no_audio_single_frame, min_frame=min_silent_frame)
     # 组合flag
-    flag_main_clip = ~flag_is_tpose
+    trim_length = 60 # 前后裁剪掉半秒
+    flag_main_clip = np.ones_like(flag_is_tpose)
+    flag_main_clip[:trim_length] = False
+    flag_main_clip[-trim_length:] = False
+    flag_main_clip = flag_main_clip & (~flag_is_tpose)
     flag_main_clip = flag_main_clip & (~flag_no_audio)
     # flag_main_clip = flag_main_clip & (~flag_no_motion)
     clips_main_clip = clips_from_flags(flag_main_clip)
@@ -274,12 +278,13 @@ def _find_main_clips(angles_body, audio_energy, positions_body,
         # If the velocity at the start is above the threshold, search for the nearest point within the clip
         # where the velocity is below the threshold, and adjust the start index accordingly.
         def _check_frame(frame_index):
-            if frame_index < 0 or frame_index >= vel.shape[0]:
+            if frame_index <= 0 or frame_index >= vel.shape[0] - 1:
                 return False
             flag_vel = vel[frame_index] < min_vel_threshold
+            flag_vel_local_min = (vel[frame_index-1] > vel[frame_index]) & (vel[frame_index+1] > vel[frame_index])
             flag_tpose = flag_is_tpose[frame_index]
             flag_no_audio = flag_no_audio_single_frame[frame_index]
-            return flag_vel and not flag_tpose and flag_no_audio
+            return flag_vel and flag_vel_local_min and not flag_tpose and flag_no_audio
 
         if vel[start] > min_vel_threshold:
             step_size = 2
@@ -295,14 +300,15 @@ def _find_main_clips(angles_body, audio_energy, positions_body,
                     flag_found_peak = True
                     break
                 if start - offset >= 0:
-                    print(f'    {start - offset:6d} not satisfy: vel={vel[start - offset]:.3f}, is_tpose={flag_is_tpose[start - offset]}, no_audio={flag_no_audio_single_frame[start - offset]}')
-                print(f'    {start + offset:6d} not satisfy: vel={vel[start + offset]:.3f}, is_tpose={flag_is_tpose[start + offset]}, no_audio={flag_no_audio_single_frame[start + offset]}')
+                    print(f'    {start - offset:6d} not satisfy: vel={vel[start - offset-1:start - offset+2]}, is_tpose={flag_is_tpose[start - offset]}, no_audio={flag_no_audio_single_frame[start - offset]}')
+                print(f'    {start + offset:6d} not satisfy: vel={vel[start + offset-1:start + offset+2]}, is_tpose={flag_is_tpose[start + offset]}, no_audio={flag_no_audio_single_frame[start + offset]}')
             if not flag_found_peak:
                 start = end
                 print(f'  not found peak, set start = {start}')
                 continue
             else:
                 print(f'  found peak at {start}')
+                print(f'  vel: {vel[start-1:start+2]}')
         # Similarly, adjust the end index if the velocity at the end is above the threshold.
         if vel[end-1] > min_vel_threshold:
             step_size = 2
@@ -334,8 +340,6 @@ def _find_main_clips(angles_body, audio_energy, positions_body,
             'title': '',
             'start_frame': start,
             'end_frame': end,
-            'start_time': start / motion_fps,
-            'end_time': end / motion_fps
         })
     if len(labels) == 0:
         # 打印debug信息：
@@ -346,6 +350,124 @@ def _find_main_clips(angles_body, audio_energy, positions_body,
         print(f'clips main clip: {clips_main_clip}')
     return labels, vel
 
+def try_to_split(audio_energy, vel, start, end, min_motion_clip_size, max_motion_clip_size):
+    audio_energy_sub = audio_energy[start:end]
+    vel_sub = vel[start:end]
+    # normalize the vel
+    vel_sub = vel_sub / vel_sub.max()
+    # 
+    mean_metric = (audio_energy_sub + vel_sub) / 2
+    threshold = 0.1
+
+    # 从中心开始寻找，直到找到一个局部最小值
+    # 查找最小值 & 是局部最小值
+    flag_valid = mean_metric < threshold
+    flag_valid[1:-1] = (mean_metric[1:-1] < mean_metric[:-2]) & (mean_metric[1:-1] < mean_metric[2:])
+    flag_valid[:min_motion_clip_size] = False
+    flag_valid[-min_motion_clip_size:] = False
+    if flag_valid.sum() == 0:
+        find = -1
+    else:
+        mean_metric[~flag_valid] = np.inf
+        find = int(np.argmin(mean_metric))
+    clips_new = []
+    if find == -1:
+        print(f'  not found clip, mean_metric: {mean_metric}')
+        return clips_new
+    find = start + find
+    if find - start > max_motion_clip_size:
+        # 递归一下
+        clips_ = try_to_split(audio_energy, vel, start, find, min_motion_clip_size, max_motion_clip_size)
+        clips_new.extend(clips_)
+    else:
+        clips_new.append({
+            'category': 'clip',
+            'label': '',
+            'title': '',
+            'start_frame': start,
+            'end_frame': find,
+        })
+    if end - find > max_motion_clip_size:
+        # 递归一下
+        clips_ = try_to_split(audio_energy, vel, find, end, min_motion_clip_size, max_motion_clip_size)
+        clips_new.extend(clips_)
+    else:
+        clips_new.append({
+            'category': 'clip',
+            'label': '',
+            'title': '',
+            'start_frame': find,
+            'end_frame': end,
+        })
+    return clips_new
+
+def try_to_find_action(velocity, audio_energy, start_frame, end_frame, 
+                       vel_threshold=0.1,
+                       audio_energy_thres=0.2
+                       ):
+    # 这个函数用于查找两个局部极小值之间的动作片段
+    # 查找原则：
+    # 1. 检查所有[start_frame, end_frame]之间的局部极小值，且小于threshold
+    vel_local = velocity[start_frame:end_frame]
+    flag_thres = vel_local < vel_threshold
+    flag_thres[1:-1] = (vel_local[1:-1] < vel_local[:-2]) & (vel_local[1:-1] < vel_local[2:])
+    if flag_thres.sum() == 0:
+        return []
+    
+    # 获取局部极小值的索引
+    local_min_indices = np.where(flag_thres)[0]
+    
+    # 查找两个局部极小值之间的动作片段
+    threshold = 120
+    while True:
+        found = False
+        for i in range(1, len(local_min_indices) - 1):
+            if (local_min_indices[i] - local_min_indices[i - 1] < threshold and vel_local[local_min_indices[i - 1]] < vel_local[local_min_indices[i]]) or \
+               (local_min_indices[i + 1] - local_min_indices[i] < threshold and vel_local[local_min_indices[i + 1]] < vel_local[local_min_indices[i]]):
+                local_min_indices = np.delete(local_min_indices, i)
+                found = True
+                break
+        if not found:
+            break
+    
+    flag_audio_local_min = audio_energy < audio_energy_thres
+    flag_audio_local_min[1:-1] = flag_audio_local_min[1:-1] & (audio_energy[1:-1] < audio_energy[:-2]) & (audio_energy[1:-1] < audio_energy[2:])
+    actions = []
+    for i in range(len(local_min_indices) - 1):
+        start = int(local_min_indices[i] + start_frame)
+        end = int(local_min_indices[i + 1] + start_frame)
+        # Check if the average velocity in the interval is greater than the velocity at the endpoints
+        mean_vel = np.mean(velocity[start:end])
+        if mean_vel < vel_threshold:
+            print(f'  mean_vel: {mean_vel:.3f} < {vel_threshold:.3f}, skip')
+            continue
+        if not (mean_vel > vel_local[local_min_indices[i]] and \
+                mean_vel > vel_local[local_min_indices[i + 1]]):
+            continue
+        mean_audio = np.mean(audio_energy[start:end])
+        if mean_audio < audio_energy_thres:
+            print(f'  mean_audio: {mean_audio:.3f} < {audio_energy_thres:.3f}, skip')
+            continue
+        # 查找start的前面padding帧，如果存在一个audio_energy的极小值，那么替换start
+        padding = 30 # padding半秒
+        if flag_audio_local_min[start-padding:start].sum() > 0:
+            start = start - padding + np.argmax(flag_audio_local_min[start-padding:start])
+        # 查找end的后面的padding帧，如果存在一个audio_energy的极小值，那么替换end
+        if flag_audio_local_min[end:end+padding].sum() > 0:
+            end = end + padding + np.argmin(flag_audio_local_min[end:end+padding])
+        # 检查一下start和end是否在同一个区间
+        if end - start < 120:
+            continue
+        actions.append({
+            'category': 'action',
+            'label': '',
+            'title': '',
+            'start_frame': int(start),
+            'end_frame': int(end),
+        })
+
+    return actions
+
 def _get_labels(audio_name, bvh_name, strict=False, motion_fps=120):
     # audio_energy: (second x 100, 1)
     audio_energy = _get_audio_energy(audio_name)
@@ -355,7 +477,13 @@ def _get_labels(audio_name, bvh_name, strict=False, motion_fps=120):
         # check the length of audio and motion
         if abs(audio_energy.shape[0] - positions.shape[0]) > 30:
             print(f'mismatch: {os.sep.join(audio_name.split(os.sep)[-3:]):40s}: {audio_energy.shape[0]/motion_fps:7.3f} - {positions.shape[0]/motion_fps:7.3f} = {abs(audio_energy.shape[0] - positions.shape[0])/motion_fps:5.3f}')
-            return None, None, None
+            return [{
+                'category': 'dummy',
+                'label': '',
+                'title': '',
+                'start_frame': 0,
+                'end_frame': positions.shape[0],
+            }], audio_energy, audio_energy
     if audio_energy.shape[0] > positions.shape[0]:
         audio_energy = audio_energy[:positions.shape[0]]
     else:
@@ -364,6 +492,25 @@ def _get_labels(audio_name, bvh_name, strict=False, motion_fps=120):
         audio_energy = np.concatenate([audio_energy, audio_energy[-1:].repeat(padding, axis=0)])
     audio_energy = audio_energy
     labels_main, vel = _find_main_clips(angles_body, audio_energy, positions_body, min_vel_threshold=args.min_vel_threshold)
+    # 检查每个labels_main，如果大于窗口大小，那么拆分成doge
+    max_motion_clip_size = 1200
+    min_motion_clip_size = 240
+    labels_new = []
+    for label in labels_main:
+        if label['end_frame'] - label['start_frame'] < max_motion_clip_size:
+            continue
+        clips_new = try_to_split(audio_energy, vel, label['start_frame'], label['end_frame'], min_motion_clip_size, max_motion_clip_size)
+        labels_new.extend(clips_new)
+    for label in labels_main:
+        if label['category'] != 'main':
+            continue
+        # 检查是否存在动作片段
+        actions = try_to_find_action(vel, audio_energy, label['start_frame'], label['end_frame'])
+        if len(actions) > 0:
+            labels_new.extend(actions)
+        else:
+            print(f'  no action found in {label["start_frame"]} - {label["end_frame"]}')
+    labels_main.extend(labels_new)
     # 添加一个dummy的
     labels_main.append({
         'category': 'dummy',
@@ -372,6 +519,10 @@ def _get_labels(audio_name, bvh_name, strict=False, motion_fps=120):
         'start_frame': 0,
         'end_frame': vel.shape[0],
     })
+    for label in labels_main:
+        label['start_time'] = label['start_frame'] / motion_fps
+        label['end_time'] = label['end_frame'] / motion_fps
+        print(f'{label["category"]} {label["start_frame"]} - {label["end_frame"]} = {label["start_time"]} - {label["end_time"]}')
     return labels_main, audio_energy, vel
 
 @app.route('/get_labels/<day>/<audio_name>/<bvh_name>')
@@ -382,14 +533,14 @@ def get_labels(day, audio_name, bvh_name, strict=False):
     bvh_file_path = os.path.join(root_path, day, args.mocap_dir, bvh_name)
     labels_main, audio_energy, vel = _get_labels(audio_file_path, bvh_file_path, strict)
     # 寻找有效的区间
-    if not os.path.exists(label_file_path):
+    if not os.path.exists(label_file_path) or args.restart:
         # 读入bvh文件与audio文件
         # 计算rotation与单位阵的差异
         labels = labels_main
     else:
         labels = read_json_label(label_file_path)
-        if len([l for l in labels if l['category'] == 'main']) == 0:
-            labels.extend(labels_main)
+        if len(labels) < len(labels_main):
+            labels = labels_main
     ret = {
         'audio_energy': audio_energy.tolist(),
         'motion_velocity': vel.tolist(),
@@ -422,6 +573,7 @@ def generate_labels(args):
     days = [d for d in os.listdir(root_path) if os.path.isdir(os.path.join(root_path, d))]
     # Sort the directories
     days.sort()
+    not_valid = []
     for day in days:
         print(f'generate labels for {day}')
         mocap_folder = os.path.join(root_path, day, args.mocap_dir)
@@ -449,33 +601,42 @@ def generate_labels(args):
                 with open(label_file_name, 'r') as f:
                     labels = json.load(f)
                 # 检查一下total frames
+                label_main = [l for l in labels if l['category'] == 'main']
                 label_dummy = [l for l in labels if l['category'] == 'dummy']
-                if len(label_dummy) == 0:
-                    total_frames = 0
-                else:
-                    total_frames = label_dummy[0]['end_frame'] - label_dummy[0]['start_frame']
+                if len(label_main) == 0:
+                    not_valid.append((day, audio_file))
+                assert len(label_dummy) == 1, f'{label_file_name} has no dummy label'
+                total_frames = label_dummy[0]['end_frame'] - label_dummy[0]['start_frame']
                 files_info[day].append({
                     'total_frames': total_frames,
-                    'valid_frames': sum([l['end_frame'] - l['start_frame'] for l in labels if l['category'] == 'main']),
-                    'valid_clips': len([l for l in labels if l['category'] == 'main']),
+                    'valid_frames': sum([l['end_frame'] - l['start_frame'] for l in label_main]),
+                    'valid_clips': len(label_main),
+                    'frames': [l['end_frame'] - l['start_frame'] for l in label_main],
                 })
                 continue
             os.makedirs(os.path.dirname(label_file_name), exist_ok=True)
 
             audio_file = os.path.join(audio_folder, audio_file)
-            labels_main, audio_energy, vel = _get_labels(audio_file, bvh_file[0], strict=True)
+            labels_all, audio_energy, vel = _get_labels(audio_file, bvh_file[0], strict=True)
+            labels_main = [l for l in labels_all if l['category'] == 'main']
+            label_dummy = [l for l in labels_all if l['category'] == 'dummy']
+            assert len(label_dummy) == 1, f'{label_file_name} has no dummy label'
             if labels_main is None:
                 # write 一个空的
                 with open(label_file_name, 'w') as f:
                     json.dump([], f, indent=4)
+                not_valid.append((day, audio_file))
                 continue
             files_info[day].append({
                 'total_frames': vel.shape[0],
-                'valid_frames': sum([l['end_frame'] - l['start_frame'] for l in labels_main]),
+                'valid_frames': sum([l['end_frame'] - l['start_frame'] for l in labels_main if l['category'] == 'main']),
                 'valid_clips': len(labels_main),
+                'frames': [l['end_frame'] - l['start_frame'] for l in labels_main if l['category'] == 'main'],
             })
             with open(label_file_name, 'w') as f:
                 json.dump(labels_main, f, indent=4)
+    for day, audio_file in not_valid:
+        print(f'{day} {audio_file}')
     # 分别统计每一天的量，形成格输出
     headers = ['day', 'total_frames', 'valid_frames', 'valid_ratio', 'valid_time', 'valid_clips']
     rows = []
@@ -484,6 +645,8 @@ def generate_labels(args):
     valid_clips_sum = 0
 
     for day, info in files_info.items():
+        frames_all = sum([l['frames'] for l in info], [])
+        print(f'{day} frames_all: {min(frames_all)} - {max(frames_all)}, mean: {sum(frames_all) / len(frames_all):.3f}')
         total_frames = sum([l['total_frames'] for l in info])
         valid_frames = sum([l['valid_frames'] for l in info])
         valid_clips = sum([l['valid_clips'] for l in info])
@@ -531,6 +694,27 @@ if __name__ == '__main__':
     # python3 scripts/annotate_bvh_database.py --root /apdcephfs_cq10/share_1467498/datasets/motion_data/a2g/project --mocap_dir MoCap_bvh --port 5001 --silent_frame 120
     # failure case
     # http://9.134.230.186:5001/visualize/20240612_ZGL/46
-    # python3 scripts/annotate_bvh_database.py --root /apdcephfs_cq10/share_1467498/datasets/motion_data/a2g/project --mocap_dir MoCap_bvh --port 5001 --silent_frame 240 --generate
+    # python3 scripts/annotate_bvh_database.py --root /apdcephfs_cq10/share_1467498/datasets/motion_data/a2g/project --mocap_dir MoCap_bvh --port 5001 --silent_frame 120 --generate --min_vel_threshold 0.15 --restart
     # 处理project_extend数据
     # python3 scripts/annotate_bvh_database.py --root /apdcephfs_cq10/share_1467498/datasets/motion_data/a2g/project_extend --mocap_dir MoCap_bvh_align --port 5001 --silent_frame 120 --min_vel_threshold 0.15 --generate
+# python3 scripts/annotate_bvh_database.py --root /apdcephfs_cq10/share_1467498/datasets/motion_data/a2g/project_extend --mocap_dir MoCap_bvh_align --port 5001 --silent_frame 120 --min_vel_threshold 0.15 --generate
+# 20241028_YunYing 001_005_003.wav
+# 20241114_AiXX C_01_048_000_g.wav
+# 20241114_AiXX C_02_070_000_g.wav                                                                                                                                           
+# ╒══════════════════╤════════════════╤════════════════╤═══════════════╤══════════════╤═══════════════╕                                                                      
+# │ day              │   total_frames │   valid_frames │   valid_ratio │   valid_time │   valid_clips │                                                                      
+# ╞══════════════════╪════════════════╪════════════════╪═══════════════╪══════════════╪═══════════════╡                                                                      
+# │ 20241028_YunYing │          57576 │          30889 │      0.536491 │      257.408 │            31 │
+# ├──────────────────┼────────────────┼────────────────┼───────────────┼──────────────┼───────────────┤
+# │ 20241029_YunYing │          67637 │          36861 │      0.544983 │      307.175 │            43 │
+# ├──────────────────┼────────────────┼────────────────┼───────────────┼──────────────┼───────────────┤
+# │ 20241030_YunYing │          61213 │          35641 │      0.582246 │      297.008 │            42 │
+# ├──────────────────┼────────────────┼────────────────┼───────────────┼──────────────┼───────────────┤
+# │ 20241112_AiXX    │         291859 │         220844 │      0.75668  │     1840.37  │           132 │
+# ├──────────────────┼────────────────┼────────────────┼───────────────┼──────────────┼───────────────┤
+# │ 20241113_AiXX    │         339337 │         257394 │      0.75852  │     2144.95  │           176 │
+# ├──────────────────┼────────────────┼────────────────┼───────────────┼──────────────┼───────────────┤
+# │ 20241114_AiXX    │         323071 │         248513 │      0.769221 │     2070.94  │           175 │
+# ├──────────────────┼────────────────┼────────────────┼───────────────┼──────────────┼───────────────┤
+# │ Total            │        1140693 │         830142 │      0.727752 │     6917.85  │           599 │
+# ╘══════════════════╧════════════════╧════════════════╧═══════════════╧══════════════╧═══════════════╛
